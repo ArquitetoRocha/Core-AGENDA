@@ -467,7 +467,9 @@ function rGantt(){
     const dh=document.createElement('div');dh.className='gdh'+(isTod?' today':'')+(isBlk?' blocked':'');dh.style.cssText=`width:${dw}%;flex-shrink:0`;
     dh.innerHTML=`<div class="dname">${fwd(d)}</div><div class="dnum">${d.getDate()}</div>${isBlk?'<div class="dtag vt">Vier</div>':isWknd?'':'<div class="dtag ft">Torres</div>'}`;
     dh.onclick=()=>{document.getElementById('eD').value=ds;openEvModal()};days.appendChild(dh);
-    const dayRt=rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&A.types.routine);
+    // Rotinas que foram movidas (override) não aparecem mais no slot original
+    const overriddenRtIds=new Set(A.events.filter(x=>x._fromRoutine&&x.date===ds).map(x=>x._fromRoutine));
+    const dayRt=rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&A.types.routine&&!overriddenRtIds.has(e.id));
     const dayUsr=userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&A.types.event&&!e.isRoutine);
     const allEvs=[...dayRt,...dayUsr].sort((a,b)=>{const[ah,am]=a.time.split(':').map(Number);const[bh,bm]=b.time.split(':').map(Number);return(ah*60+am)-(bh*60+bm)});
     const tm={};allEvs.forEach(e=>{if(!tm[e.time])tm[e.time]=[];tm[e.time].push(e)});
@@ -520,7 +522,9 @@ function makeDrag(el, ev, origTop, totH, ds, dayDate){
       moved=false;
       const nt=yToTime(parseFloat(el.style.top));
       if(ev.isRoutine){
-        // Rotina movida → vira evento manual no novo horário
+        // Rotina movida → vira evento manual, suprime original naquele dia
+        // Remove override anterior se existir
+        A.events=A.events.filter(x=>!(x._fromRoutine===ev.id&&x.date===ds));
         const newEv={id:uid(),title:ev.title,date:ds,time:nt,duration:ev.duration,client:ev.client,type:ev.type,notes:ev.notes,desc:'',isRoutine:false,_fromRoutine:ev.id};
         A.events.push(newEv);
       } else {

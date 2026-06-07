@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teste Drag</title>
+<style>
+body{font-family:sans-serif;padding:20px;background:#f5f5f5}
+h3{margin-bottom:8px}
+p{font-size:13px;color:#666;margin-bottom:16px}
+.grid{position:relative;width:280px;height:500px;background:white;border:1px solid #ddd;border-radius:8px;overflow:hidden}
+.timecol{position:absolute;left:0;top:0;bottom:0;width:48px;background:#fafafa;border-right:1px solid #eee}
+.tl{position:absolute;left:0;width:100%;text-align:right;padding-right:8px;font-size:10px;color:#999;transform:translateY(-50%)}
+.area{position:absolute;left:48px;right:0;top:0;bottom:0}
+.hline{position:absolute;left:0;right:0;border-top:1px solid #eee}
+.evt{
+  position:absolute;left:4px;right:4px;
+  background:#E1ECF5;border-left:3px solid #1E5A91;
+  border-radius:4px;padding:4px 8px;
+  cursor:grab;
+  -webkit-user-select:none;user-select:none;
+  touch-action:none;
+}
+.evt.dragging{opacity:.7;cursor:grabbing;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:10}
+.evt-time{font-size:10px;opacity:.7}
+.evt-title{font-size:11px;font-weight:600}
+#log{margin-top:16px;padding:10px;background:#fff;border:1px solid #ddd;border-radius:6px;font-size:12px;color:#333;min-height:60px}
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center}
+#modal.show{display:flex}
+.mbox{background:white;border-radius:10px;padding:20px;max-width:300px;width:90%}
+.mbox h4{margin:0 0 12px}
+.mbox input{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-bottom:8px}
+.mbox button{padding:8px 16px;background:#1E5A91;color:white;border:none;border-radius:6px;cursor:pointer}
+</style>
+</head>
+<body>
+<h3>Teste de Drag — CORE Agenda</h3>
+<p>Arraste os blocos verticalmente para mudar horário.<br>Duplo clique para editar o título.</p>
+<div class="grid">
+  <div class="timecol" id="timecol"></div>
+  <div class="area" id="area">
+    <div id="hlines"></div>
+  </div>
+</div>
+<div id="log">Aguardando interação...</div>
+
+<div id="modal">
+  <div class="mbox">
+    <h4 id="modal-title">Editar evento</h4>
+    <input type="text" id="modal-input" placeholder="Título do evento">
+    <br>
+    <button onclick="saveModal()">Salvar</button>
+    <button onclick="closeModal()" style="background:#eee;color:#333;margin-left:8px">Cancelar</button>
+  </div>
+</div>
+
+<script>
+const HPX=60, SH=8, EH=16;
+let editingEl=null;
+
+const events=[
+  {id:'e1',title:'Reunião de coordenação',time:'09:00',duration:60},
+  {id:'e2',title:'Análise técnica',time:'11:00',duration:60},
+  {id:'e3',title:'Bloco livre · encaixe',time:'14:00',duration:60},
+];
+
+function minsToY(m){return((m-SH*60)/60)*HPX}
+function yToTime(y){
+  const mins=Math.round((y/HPX*60+SH*60)/15)*15;
+  const h=Math.floor(mins/60),m=mins%60;
+  return String(Math.max(SH,Math.min(EH-1,h))).padStart(2,'0')+':'+String(m).padStart(2,'0');
+}
+function log(msg){document.getElementById('log').textContent=msg}
+
+// Montar grid
+const tc=document.getElementById('timecol');
+const hl=document.getElementById('hlines');
+for(let h=SH;h<=EH;h++){
+  const tl=document.createElement('div');
+  tl.className='tl';
+  tl.style.top=((h-SH)*HPX)+'px';
+  tl.textContent=h+':00';
+  tc.appendChild(tl);
+  const line=document.createElement('div');
+  line.className='hline';
+  line.style.top=((h-SH)*HPX)+'px';
+  hl.appendChild(line);
+}
+
+// Render eventos
+function render(){
+  document.querySelectorAll('.evt').forEach(e=>e.remove());
+  const area=document.getElementById('area');
+  const totH=(EH-SH)*HPX;
+  events.forEach(ev=>{
+    const[h,m]=ev.time.split(':').map(Number);
+    const top=minsToY(h*60+m);
+    const height=Math.max((ev.duration/60)*HPX,24);
+    const el=document.createElement('div');
+    el.className='evt';
+    el.style.top=top+'px';
+    el.style.height=height+'px';
+    el.innerHTML=`<div class="evt-time">${ev.time}</div><div class="evt-title">${ev.title}</div>`;
+    el.dataset.id=ev.id;
+    // DRAG
+    let pid=null,sy=0,st=0,moved=false,lastTap=0;
+    el.addEventListener('pointerdown',e=>{
+      if(e.target.tagName==='INPUT')return;
+      pid=e.pointerId;sy=e.clientY;st=parseFloat(el.style.top)||top;moved=false;
+      el.setPointerCapture(pid);
+      log('pointerdown: '+ev.title);
+    });
+    el.addEventListener('pointermove',e=>{
+      if(e.pointerId!==pid)return;
+      const dy=e.clientY-sy;
+      if(Math.abs(dy)>8){moved=true;el.classList.add('dragging');el.style.top=Math.max(0,Math.min(totH-24,st+dy))+'px';log('movendo: top='+Math.round(parseFloat(el.style.top))+'px')}
+    });
+    el.addEventListener('pointerup',e=>{
+      if(e.pointerId!==pid)return;
+      pid=null;el.classList.remove('dragging');
+      if(moved){
+        moved=false;
+        const nt=yToTime(parseFloat(el.style.top));
+        ev.time=nt;
+        log('✓ Movido para '+nt);
+        render();return;
+      }
+      // Duplo clique
+      const now=Date.now();
+      if(now-lastTap<400){openModal(ev,el)}
+      else{lastTap=now;log('clique simples em: '+ev.title)}
+    });
+    el.addEventListener('pointercancel',()=>{pid=null;moved=false;el.classList.remove('dragging')});
+    area.appendChild(el);
+  });
+}
+
+function openModal(ev,el){
+  editingEl={ev,el};
+  document.getElementById('modal-title').textContent='Editar: '+ev.title;
+  document.getElementById('modal-input').value=ev.title;
+  document.getElementById('modal').classList.add('show');
+  setTimeout(()=>document.getElementById('modal-input').focus(),100);
+  log('modal aberto para: '+ev.title);
+}
+function saveModal(){
+  if(!editingEl)return;
+  editingEl.ev.title=document.getElementById('modal-input').value;
+  closeModal();render();log('✓ Título salvo');
+}
+function closeModal(){document.getElementById('modal').classList.remove('show');editingEl=null}
+
+render();
+log('App carregado — arraste os blocos ou dê duplo clique para editar');
+</script>
+</body>
+</html>

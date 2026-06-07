@@ -1,157 +1,98 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Teste Drag</title>
 <style>
-body{font-family:sans-serif;padding:20px;background:#f5f5f5}
-h3{margin-bottom:8px}
-p{font-size:13px;color:#666;margin-bottom:16px}
-.grid{position:relative;width:280px;height:500px;background:white;border:1px solid #ddd;border-radius:8px;overflow:hidden}
-.timecol{position:absolute;left:0;top:0;bottom:0;width:48px;background:#fafafa;border-right:1px solid #eee}
-.tl{position:absolute;left:0;width:100%;text-align:right;padding-right:8px;font-size:10px;color:#999;transform:translateY(-50%)}
-.area{position:absolute;left:48px;right:0;top:0;bottom:0}
-.hline{position:absolute;left:0;right:0;border-top:1px solid #eee}
-.evt{
-  position:absolute;left:4px;right:4px;
-  background:#E1ECF5;border-left:3px solid #1E5A91;
-  border-radius:4px;padding:4px 8px;
-  cursor:grab;
-  -webkit-user-select:none;user-select:none;
-  touch-action:none;
-}
-.evt.dragging{opacity:.7;cursor:grabbing;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:10}
-.evt-time{font-size:10px;opacity:.7}
-.evt-title{font-size:11px;font-weight:600}
-#log{margin-top:16px;padding:10px;background:#fff;border:1px solid #ddd;border-radius:6px;font-size:12px;color:#333;min-height:60px}
-#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);align-items:center;justify-content:center}
-#modal.show{display:flex}
-.mbox{background:white;border-radius:10px;padding:20px;max-width:300px;width:90%}
-.mbox h4{margin:0 0 12px}
-.mbox input{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-bottom:8px}
-.mbox button{padding:8px 16px;background:#1E5A91;color:white;border:none;border-radius:6px;cursor:pointer}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100vh;overflow:hidden;font-family:sans-serif;background:#f5f5f5}
+body{display:grid;grid-template-rows:56px 1fr}
+header{background:#1E5A91;color:white;display:flex;align-items:center;padding:0 20px;font-size:14px;font-weight:600}
+main{display:grid;grid-template-columns:160px 1fr;overflow:hidden;height:calc(100vh - 56px)}
+aside{background:white;border-right:1px solid #ddd;padding:16px}
+.content{display:flex;flex-direction:column;overflow:hidden}
+.gwrap{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.ghead{display:flex;background:white;border-bottom:1px solid #ddd;flex-shrink:0}
+.gcnr{width:56px;flex-shrink:0;border-right:1px solid #ddd;padding:8px;font-size:9px;color:#999;display:flex;align-items:flex-end}
+.gdays{display:flex;flex:1}
+.gdh{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 4px;border-right:1px solid #eee;font-size:11px;font-weight:600;color:#333}
+.gbody{flex:1;display:flex;overflow:auto;min-height:0}
+.gtc{width:56px;flex-shrink:0;border-right:1px solid #ddd;background:white;position:sticky;left:0}
+.tslot{height:60px;display:flex;align-items:flex-start;justify-content:flex-end;padding:5px 6px 0;border-bottom:1px solid #eee;font-family:monospace;font-size:9px;color:#aaa}
+.day-cols{flex:1;display:flex;overflow:hidden}
+.day-col{flex:1;position:relative;border-right:1px solid #eee}
+.gevt{position:absolute;left:2px;right:2px;background:#E1ECF5;border-left:3px solid #1E5A91;border-radius:3px;padding:4px 6px;font-size:10px;font-weight:600;color:#0d3060;overflow:hidden}
 </style>
 </head>
 <body>
-<h3>Teste de Drag — CORE Agenda</h3>
-<p>Arraste os blocos verticalmente para mudar horário.<br>Duplo clique para editar o título.</p>
-<div class="grid">
-  <div class="timecol" id="timecol"></div>
-  <div class="area" id="area">
-    <div id="hlines"></div>
+<header>CORE · agenda</header>
+<main>
+<aside>Sidebar</aside>
+<div class="content">
+  <div class="gwrap">
+    <div class="ghead">
+      <div class="gcnr">hora</div>
+      <div class="gdays" id="gdays"></div>
+    </div>
+    <div class="gbody">
+      <div class="gtc" id="gtc"></div>
+      <div class="day-cols" id="dayCols"></div>
+    </div>
   </div>
 </div>
-<div id="log">Aguardando interação...</div>
-
-<div id="modal">
-  <div class="mbox">
-    <h4 id="modal-title">Editar evento</h4>
-    <input type="text" id="modal-input" placeholder="Título do evento">
-    <br>
-    <button onclick="saveModal()">Salvar</button>
-    <button onclick="closeModal()" style="background:#eee;color:#333;margin-left:8px">Cancelar</button>
-  </div>
-</div>
-
+</main>
 <script>
-const HPX=60, SH=8, EH=16;
-let editingEl=null;
+const SH=8,EH=19,HPX=60;
+const DAYS=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+const today=new Date();
+function pad(n){return String(n).padStart(2,'0')}
 
-const events=[
-  {id:'e1',title:'Reunião de coordenação',time:'09:00',duration:60},
-  {id:'e2',title:'Análise técnica',time:'11:00',duration:60},
-  {id:'e3',title:'Bloco livre · encaixe',time:'14:00',duration:60},
-];
-
-function minsToY(m){return((m-SH*60)/60)*HPX}
-function yToTime(y){
-  const mins=Math.round((y/HPX*60+SH*60)/15)*15;
-  const h=Math.floor(mins/60),m=mins%60;
-  return String(Math.max(SH,Math.min(EH-1,h))).padStart(2,'0')+':'+String(m).padStart(2,'0');
-}
-function log(msg){document.getElementById('log').textContent=msg}
-
-// Montar grid
-const tc=document.getElementById('timecol');
-const hl=document.getElementById('hlines');
+// Time col
+const gtc=document.getElementById('gtc');
 for(let h=SH;h<=EH;h++){
-  const tl=document.createElement('div');
-  tl.className='tl';
-  tl.style.top=((h-SH)*HPX)+'px';
-  tl.textContent=h+':00';
-  tc.appendChild(tl);
-  const line=document.createElement('div');
-  line.className='hline';
-  line.style.top=((h-SH)*HPX)+'px';
-  hl.appendChild(line);
+  const s=document.createElement('div');
+  s.className='tslot';
+  s.textContent=pad(h)+':00';
+  gtc.appendChild(s);
 }
 
-// Render eventos
-function render(){
-  document.querySelectorAll('.evt').forEach(e=>e.remove());
-  const area=document.getElementById('area');
-  const totH=(EH-SH)*HPX;
-  events.forEach(ev=>{
-    const[h,m]=ev.time.split(':').map(Number);
-    const top=minsToY(h*60+m);
-    const height=Math.max((ev.duration/60)*HPX,24);
-    const el=document.createElement('div');
-    el.className='evt';
-    el.style.top=top+'px';
-    el.style.height=height+'px';
-    el.innerHTML=`<div class="evt-time">${ev.time}</div><div class="evt-title">${ev.title}</div>`;
-    el.dataset.id=ev.id;
-    // DRAG
-    let pid=null,sy=0,st=0,moved=false,lastTap=0;
-    el.addEventListener('pointerdown',e=>{
-      if(e.target.tagName==='INPUT')return;
-      pid=e.pointerId;sy=e.clientY;st=parseFloat(el.style.top)||top;moved=false;
-      el.setPointerCapture(pid);
-      log('pointerdown: '+ev.title);
-    });
-    el.addEventListener('pointermove',e=>{
-      if(e.pointerId!==pid)return;
-      const dy=e.clientY-sy;
-      if(Math.abs(dy)>8){moved=true;el.classList.add('dragging');el.style.top=Math.max(0,Math.min(totH-24,st+dy))+'px';log('movendo: top='+Math.round(parseFloat(el.style.top))+'px')}
-    });
-    el.addEventListener('pointerup',e=>{
-      if(e.pointerId!==pid)return;
-      pid=null;el.classList.remove('dragging');
-      if(moved){
-        moved=false;
-        const nt=yToTime(parseFloat(el.style.top));
-        ev.time=nt;
-        log('✓ Movido para '+nt);
-        render();return;
-      }
-      // Duplo clique
-      const now=Date.now();
-      if(now-lastTap<400){openModal(ev,el)}
-      else{lastTap=now;log('clique simples em: '+ev.title)}
-    });
-    el.addEventListener('pointercancel',()=>{pid=null;moved=false;el.classList.remove('dragging')});
-    area.appendChild(el);
-  });
-}
+// Days
+const gdays=document.getElementById('gdays');
+const dayCols=document.getElementById('dayCols');
+const totH=(EH-SH)*HPX;
 
-function openModal(ev,el){
-  editingEl={ev,el};
-  document.getElementById('modal-title').textContent='Editar: '+ev.title;
-  document.getElementById('modal-input').value=ev.title;
-  document.getElementById('modal').classList.add('show');
-  setTimeout(()=>document.getElementById('modal-input').focus(),100);
-  log('modal aberto para: '+ev.title);
+for(let i=0;i<7;i++){
+  const d=new Date(today);
+  d.setDate(d.getDate()-d.getDay()+1+i);
+  
+  const dh=document.createElement('div');
+  dh.className='gdh';
+  dh.textContent=DAYS[i]+' '+d.getDate();
+  gdays.appendChild(dh);
+  
+  const col=document.createElement('div');
+  col.className='day-col';
+  col.style.height=totH+'px';
+  
+  // Hora lines
+  for(let h=SH;h<=EH;h++){
+    const l=document.createElement('div');
+    l.style.cssText=`position:absolute;left:0;right:0;top:${(h-SH)*60}px;border-top:1px solid ${h%2===0?'#ddd':'#eee'}`;
+    col.appendChild(l);
+  }
+  
+  // Sample event
+  if(i===0){
+    const ev=document.createElement('div');
+    ev.className='gevt';
+    ev.style.top='60px';
+    ev.style.height='60px';
+    ev.textContent='09:00 · Reunião';
+    col.appendChild(ev);
+  }
+  
+  dayCols.appendChild(col);
 }
-function saveModal(){
-  if(!editingEl)return;
-  editingEl.ev.title=document.getElementById('modal-input').value;
-  closeModal();render();log('✓ Título salvo');
-}
-function closeModal(){document.getElementById('modal').classList.remove('show');editingEl=null}
-
-render();
-log('App carregado — arraste os blocos ou dê duplo clique para editar');
+document.title='TESTE OK - ' + document.getElementById('dayCols').children.length + ' colunas';
 </script>
 </body>
 </html>

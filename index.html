@@ -467,9 +467,7 @@ function rGantt(){
     const dh=document.createElement('div');dh.className='gdh'+(isTod?' today':'')+(isBlk?' blocked':'');dh.style.cssText=`width:${dw}%;flex-shrink:0`;
     dh.innerHTML=`<div class="dname">${fwd(d)}</div><div class="dnum">${d.getDate()}</div>${isBlk?'<div class="dtag vt">Vier</div>':isWknd?'':'<div class="dtag ft">Torres</div>'}`;
     dh.onclick=()=>{document.getElementById('eD').value=ds;openEvModal()};days.appendChild(dh);
-    // Rotinas que foram movidas (override) não aparecem mais no slot original
-    const overriddenRtIds=new Set(A.events.filter(x=>x._fromRoutine&&x.date===ds).map(x=>x._fromRoutine));
-    const dayRt=rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&A.types.routine&&!overriddenRtIds.has(e.id));
+    const dayRt=rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&A.types.routine);
     const dayUsr=userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&A.types.event&&!e.isRoutine);
     const allEvs=[...dayRt,...dayUsr].sort((a,b)=>{const[ah,am]=a.time.split(':').map(Number);const[bh,bm]=b.time.split(':').map(Number);return(ah*60+am)-(bh*60+bm)});
     const tm={};allEvs.forEach(e=>{if(!tm[e.time])tm[e.time]=[];tm[e.time].push(e)});
@@ -490,8 +488,19 @@ function rGantt(){
       // Tooltip
       el.addEventListener('mouseenter',ev2=>{const t=document.getElementById('tt');document.getElementById('ttt').textContent=`${fwdf(d)} · ${e.time}`;document.getElementById('ttl').textContent=e.title;document.getElementById('tts').textContent=e.desc||e.notes||cli.name;t.classList.add('show');posTT(ev2)});
       el.addEventListener('mousemove',posTT);el.addEventListener('mouseleave',()=>document.getElementById('tt').classList.remove('show'));
-      // DRAG + DUPLO CLIQUE em TODOS os eventos
-      makeDrag(el,e,tp,totH,ds,d);
+      if(e.isRoutine){
+        // Rotinas: só duplo clique para criar evento no horário desejado
+        let lastTap2=0;
+        el.addEventListener('pointerup',function(ev2){
+          if(ev2.target.type==='checkbox')return;
+          const now=Date.now();
+          if(now-lastTap2<400){ openEvModal(null,e); }
+          else{ lastTap2=now; }
+        });
+      } else {
+        // Eventos manuais: drag + duplo clique para editar
+        makeDrag(el,e,tp,totH,ds);
+      }
       grid.appendChild(el);
     });
   }
@@ -501,8 +510,8 @@ function rGantt(){
 
 function posTT(ev){const t=document.getElementById('tt');let x=ev.clientX+14,y=ev.clientY-10;if(x+210>window.innerWidth)x=ev.clientX-210;if(y+80>window.innerHeight)y=ev.clientY-80;t.style.left=x+'px';t.style.top=y+'px'}
 
-// DRAG — cópia exata do teste que funcionou, aplicada a TODOS os eventos
-function makeDrag(el, ev, origTop, totH, ds, dayDate){
+// DRAG — somente eventos manuais (rotinas usam duplo clique)
+function makeDrag(el, ev, origTop, totH, ds){
   let pid=null, sy=0, st=0, moved=false, lastTap=0;
   el.addEventListener('pointerdown', function(e){
     if(e.target.type==='checkbox') return;
@@ -521,22 +530,13 @@ function makeDrag(el, ev, origTop, totH, ds, dayDate){
     if(moved){
       moved=false;
       const nt=yToTime(parseFloat(el.style.top));
-      if(ev.isRoutine){
-        // Rotina movida → vira evento manual, suprime original naquele dia
-        // Remove override anterior se existir
-        A.events=A.events.filter(x=>!(x._fromRoutine===ev.id&&x.date===ds));
-        const newEv={id:uid(),title:ev.title,date:ds,time:nt,duration:ev.duration,client:ev.client,type:ev.type,notes:ev.notes,desc:'',isRoutine:false,_fromRoutine:ev.id};
-        A.events.push(newEv);
-      } else {
-        const idx=A.events.findIndex(x=>x.id===ev.id||(ev._rid&&x.id===ev._rid));
-        if(idx>-1){A.events[idx].time=nt;}
-      }
-      save(); rGantt(); return;
+      const idx=A.events.findIndex(x=>x.id===ev.id||(ev._rid&&x.id===ev._rid));
+      if(idx>-1){ A.events[idx].time=nt; save(); }
+      rGantt(); return;
     }
-    // Duplo clique
     const now=Date.now();
-    if(now-lastTap<400){ openEvModal(ev.isRoutine?null:ev.id, ev); }
-    else { lastTap=now; }
+    if(now-lastTap<400){ openEvModal(ev.id); }
+    else{ lastTap=now; }
   });
   el.addEventListener('pointercancel', function(){ pid=null; moved=false; el.classList.remove('dragging'); });
 }

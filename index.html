@@ -73,11 +73,11 @@ aside{background:rgba(255,255,255,.92);border-right:1px solid var(--m200);paddin
 .dnum{font-family:var(--fm);font-size:17px;font-weight:500;color:var(--ink);line-height:1.1}
 .dtag{font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:1px}
 .dtag.vt{color:var(--b600)}.dtag.ft{color:var(--s600)}
-.gbody{flex:1;overflow:auto;display:flex;position:relative}
+.gbody{flex:1;overflow:auto;display:flex;position:relative;touch-action:pan-x pan-y}
 .gtc{width:64px;flex-shrink:0;border-right:1px solid var(--m200);background:var(--white);position:sticky;left:0;z-index:5}
 .tslot{height:60px;display:flex;align-items:flex-start;justify-content:flex-end;padding:5px 8px 0 0;border-bottom:1px solid var(--m100);font-family:var(--fm);font-size:9px;color:var(--g400)}
 .tslot.maj{border-bottom-color:var(--m200)}
-.ggrid{flex:1;position:relative;user-select:none}
+.ggrid{flex:1;position:relative;user-select:none;-webkit-user-select:none}
 .gcol{position:absolute;top:0;bottom:0;border-right:1px solid var(--m100)}
 .gcol.blk{background:repeating-linear-gradient(-45deg,transparent,transparent 7px,rgba(30,90,145,.025) 7px,rgba(30,90,145,.025) 14px)}
 .gcol.wknd{background:rgba(216,144,43,.025)}
@@ -95,6 +95,7 @@ aside{background:rgba(255,255,255,.92);border-right:1px solid var(--m200);paddin
   transition:box-shadow 120ms,opacity 120ms;
   cursor:grab;
   touch-action:none;
+  -webkit-user-select:none;user-select:none;
   -webkit-user-select:none;user-select:none;
 }
 .gevt.dragging{cursor:grabbing;opacity:.72;box-shadow:0 8px 24px rgba(0,0,0,.14);z-index:100}
@@ -522,16 +523,15 @@ function rGantt(){
 
 function posTT(ev){const t=document.getElementById('tt');let x=ev.clientX+14,y=ev.clientY-10;if(x+210>window.innerWidth)x=ev.clientX-210;if(y+80>window.innerHeight)y=ev.clientY-80;t.style.left=x+'px';t.style.top=y+'px'}
 
-// DRAG + DUPLO CLIQUE — robusto, Safari/Chrome/Firefox/iOS
+// DRAG + DUPLO CLIQUE — cópia exata do teste que funcionou
 function makeDrag(el, ev, origTop, totH){
-  let pid=null, startY=0, startTop=0, moved=false;
-  let lastClick=0;
+  let pid=null, sy=0, st=0, moved=false, lastTap=0;
 
   el.addEventListener('pointerdown', function(e){
     if(e.target.type==='checkbox') return;
     pid=e.pointerId;
-    startY=e.clientY;
-    startTop=parseFloat(el.style.top)||origTop;
+    sy=e.clientY;
+    st=parseFloat(el.style.top)||origTop;
     moved=false;
     el.setPointerCapture(pid);
     document.getElementById('tt').classList.remove('show');
@@ -539,11 +539,11 @@ function makeDrag(el, ev, origTop, totH){
 
   el.addEventListener('pointermove', function(e){
     if(e.pointerId!==pid) return;
-    const dy=e.clientY-startY;
+    const dy=e.clientY-sy;
     if(Math.abs(dy)>8){
       moved=true;
       el.classList.add('dragging');
-      el.style.top=Math.max(0,Math.min(totH-24,startTop+dy))+'px';
+      el.style.top=Math.max(0,Math.min(totH-24,st+dy))+'px';
     }
   });
 
@@ -551,33 +551,28 @@ function makeDrag(el, ev, origTop, totH){
     if(e.pointerId!==pid) return;
     pid=null;
     el.classList.remove('dragging');
-
     if(moved){
       moved=false;
-      const newTop=parseFloat(el.style.top);
-      const nm=Math.round((newTop/HPX*60+SH*60)/15)*15;
-      const nh=Math.floor(nm/60), nmin=nm%60;
-      const nt=pad(Math.max(SH,Math.min(EH-1,nh)))+':'+pad(nmin);
+      const nt=yToMins(parseFloat(el.style.top));
       const idx=A.events.findIndex(x=>x.id===ev.id||(ev._rid&&x.id===ev._rid));
       if(idx>-1){ A.events[idx].time=nt; save(); }
       rGantt();
       return;
     }
-
-    // Duplo clique manual
     const now=Date.now();
-    if(now-lastClick<400){
-      lastClick=0;
-      openEvModal(ev.id);
-    } else {
-      lastClick=now;
-    }
+    if(now-lastTap<400){ openEvModal(ev.id); }
+    else { lastTap=now; }
   });
 
   el.addEventListener('pointercancel', function(){
-    pid=null; moved=false;
-    el.classList.remove('dragging');
+    pid=null; moved=false; el.classList.remove('dragging');
   });
+}
+
+function yToMins(y){
+  const nm=Math.round((y/HPX*60+SH*60)/15)*15;
+  const nh=Math.floor(nm/60),nmin=nm%60;
+  return pad(Math.max(SH,Math.min(EH-1,nh)))+':'+pad(nmin);
 }
 
 // ── EVENT MODAL ──

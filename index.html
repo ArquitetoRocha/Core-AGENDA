@@ -488,57 +488,93 @@ function rGantt(){
       // Tooltip
       el.addEventListener('mouseenter',ev2=>{const t=document.getElementById('tt');document.getElementById('ttt').textContent=`${fwdf(d)} · ${e.time}`;document.getElementById('ttl').textContent=e.title;document.getElementById('tts').textContent=e.desc||e.notes||cli.name;t.classList.add('show');posTT(ev2)});
       el.addEventListener('mousemove',posTT);el.addEventListener('mouseleave',()=>document.getElementById('tt').classList.remove('show'));
-      if(e.isRoutine){
-        // Rotinas: só duplo clique para criar evento no horário desejado
-        let lastTap2=0;
-        el.addEventListener('pointerup',function(ev2){
-          if(ev2.target.type==='checkbox')return;
-          const now=Date.now();
-          if(now-lastTap2<400){ openEvModal(null,e); }
-          else{ lastTap2=now; }
-        });
-      } else {
-        // Eventos manuais: drag + duplo clique para editar
-        makeDrag(el,e,tp,totH,ds);
+      // Todos eventos: dados no dataset para delegação
+      el.dataset.evid = e.id||'';
+      el.dataset.isroutine = e.isRoutine?'1':'0';
+      el.dataset.etime = e.time;
+      el.dataset.ecli = e.client;
+      el.dataset.etitle = e.title;
+      el.dataset.edur = e.duration||60;
+      el.dataset.origTop = tp;
+      if(!e.isRoutine){
+        makeDrag(el, e, tp, totH);
       }
       grid.appendChild(el);
     });
   }
+  setupGridDelegation(grid);
   const cb=document.getElementById('cbar');
   if(conflicts.length){cb.classList.add('show');cb.textContent=`Conflito: ${conflicts.slice(0,3).join(', ')}.`}else cb.classList.remove('show');
 }
 
 function posTT(ev){const t=document.getElementById('tt');let x=ev.clientX+14,y=ev.clientY-10;if(x+210>window.innerWidth)x=ev.clientX-210;if(y+80>window.innerHeight)y=ev.clientY-80;t.style.left=x+'px';t.style.top=y+'px'}
 
-// DRAG — somente eventos manuais (rotinas usam duplo clique)
-function makeDrag(el, ev, origTop, totH, ds){
+// DRAG — eventos manuais, delegação limpa
+function makeDrag(el, ev, origTop, totH){
   let pid=null, sy=0, st=0, moved=false, lastTap=0;
   el.addEventListener('pointerdown', function(e){
     if(e.target.type==='checkbox') return;
-    pid=e.pointerId; sy=e.clientY; st=parseFloat(el.style.top)||origTop; moved=false;
+    pid=e.pointerId;
+    sy=e.clientY;
+    st=parseFloat(el.style.top)||origTop;
+    moved=false;
     el.setPointerCapture(pid);
     document.getElementById('tt').classList.remove('show');
   });
   el.addEventListener('pointermove', function(e){
     if(e.pointerId!==pid) return;
     const dy=e.clientY-sy;
-    if(Math.abs(dy)>8){ moved=true; el.classList.add('dragging'); el.style.top=Math.max(0,Math.min(totH-24,st+dy))+'px'; }
+    if(Math.abs(dy)>8){
+      moved=true;
+      el.classList.add('dragging');
+      el.style.top=Math.max(0,Math.min(totH-24,st+dy))+'px';
+    }
   });
   el.addEventListener('pointerup', function(e){
     if(e.pointerId!==pid) return;
-    pid=null; el.classList.remove('dragging');
+    pid=null;
+    el.classList.remove('dragging');
     if(moved){
       moved=false;
       const nt=yToTime(parseFloat(el.style.top));
       const idx=A.events.findIndex(x=>x.id===ev.id||(ev._rid&&x.id===ev._rid));
       if(idx>-1){ A.events[idx].time=nt; save(); }
-      rGantt(); return;
+      rGantt();
+      return;
     }
     const now=Date.now();
     if(now-lastTap<400){ openEvModal(ev.id); }
     else{ lastTap=now; }
   });
-  el.addEventListener('pointercancel', function(){ pid=null; moved=false; el.classList.remove('dragging'); });
+  el.addEventListener('pointercancel',function(){
+    pid=null; moved=false; el.classList.remove('dragging');
+  });
+}
+
+// Delegação para duplo clique em rotinas (no grid pai)
+function setupGridDelegation(grid){
+  let lastTapGrid=0, lastTarget=null;
+  grid.addEventListener('pointerup', function(e){
+    const el=e.target.closest('.gevt[data-isroutine="1"]');
+    if(!el) return;
+    if(e.target.type==='checkbox') return;
+    const now=Date.now();
+    if(now-lastTapGrid<400 && lastTarget===el){
+      lastTapGrid=0; lastTarget=null;
+      // Pré-preencher modal com dados da rotina
+      const prefill={
+        id:null,
+        time:el.dataset.etime,
+        client:el.dataset.ecli,
+        title:el.dataset.etitle,
+        duration:parseInt(el.dataset.edur)||60
+      };
+      openEvModal(null, prefill);
+    } else {
+      lastTapGrid=now;
+      lastTarget=el;
+    }
+  });
 }
 
 // ── EVENT MODAL ──

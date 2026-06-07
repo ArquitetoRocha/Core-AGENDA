@@ -39,7 +39,7 @@ header{background:rgba(255,255,255,.95);backdrop-filter:blur(20px);border-bottom
 .hbtn{padding:6px 14px;border:none;border-radius:6px;font-family:var(--fs);font-size:12px;font-weight:500;cursor:pointer;transition:all 120ms}
 .hbtn.p{background:var(--b600);color:#fff}.hbtn.p:hover{background:var(--b700)}
 .hbtn.s{background:var(--m100);color:var(--ink);border:1px solid var(--m200)}.hbtn.s:hover{background:var(--m200)}
-main{display:grid;grid-template-columns:196px 1fr;overflow:hidden;position:relative;z-index:1}
+main{display:grid;grid-template-columns:196px 1fr;overflow:hidden;position:relative;z-index:1;min-height:0;height:calc(100vh - 56px)}
 aside{background:rgba(255,255,255,.92);border-right:1px solid var(--m200);padding:14px 11px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
 .slbl{font-family:var(--fd);font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--g400);margin-bottom:4px}
 .nav{display:flex;flex-direction:column;gap:2px}
@@ -54,11 +54,11 @@ aside{background:rgba(255,255,255,.92);border-right:1px solid var(--m200);paddin
 .sdiv{height:1px;background:var(--m200)}
 .sinfo{font-size:11px;color:var(--g600);line-height:1.8}
 .sinfo code{font-family:var(--fm);font-size:10px;background:var(--m100);padding:1px 5px;border-radius:3px;color:var(--g500)}
-.content{overflow:hidden;display:flex;flex-direction:column}
-.tab{display:none;flex:1;overflow:hidden}.tab.on{display:flex;flex-direction:column}
+.content{overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.tab{display:none;flex:1;overflow:hidden;min-height:0}.tab.on{display:flex;flex-direction:column;min-height:0}
 
 /* ── GANTT ── */
-.gwrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.gwrap{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 .cbar{padding:6px 16px;background:var(--d100);border-bottom:1px solid rgba(181,57,46,.2);font-size:11px;color:var(--d600);display:none;align-items:center;gap:6px}
 .cbar.show{display:flex}
 .ghead{display:flex;background:var(--white);border-bottom:1px solid var(--m200);box-shadow:var(--sh1);flex-shrink:0;z-index:10}
@@ -70,12 +70,12 @@ aside{background:rgba(255,255,255,.92);border-right:1px solid var(--m200);paddin
 .dnum{font-family:var(--fm);font-size:16px;font-weight:500;color:var(--ink);line-height:1.1}
 .dtag{font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-top:1px}
 .dtag.vt{color:var(--b600)}.dtag.ft{color:var(--s600)}
-.gbody{flex:1;overflow:auto;display:flex}
+.gbody{flex:1;overflow:auto;display:flex;min-height:0}
 .gtc{width:56px;flex-shrink:0;border-right:1px solid var(--m200);background:var(--white);position:sticky;left:0;z-index:5}
 .tslot{height:60px;display:flex;align-items:flex-start;justify-content:flex-end;padding:5px 6px 0 0;border-bottom:1px solid var(--m100);font-family:var(--fm);font-size:9px;color:var(--g400)}
 .tslot.maj{border-bottom-color:var(--m200)}
 /* COLUNAS DOS DIAS */
-.day-cols{flex:1;display:flex;position:relative}
+.day-cols{flex:1;display:flex;overflow:hidden}
 .day-col{flex:1;position:relative;border-right:1px solid var(--m100);min-width:0}
 .day-col.blk{background:repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(30,90,145,.02) 8px,rgba(30,90,145,.02) 16px)}
 .day-col.wknd{background:rgba(216,144,43,.02)}

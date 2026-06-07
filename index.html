@@ -94,7 +94,17 @@ aside{background:rgba(255,255,255,.92);border-right:1px solid var(--m200);paddin
   border-left:2px solid transparent;overflow:hidden;min-height:20px;
   transition:box-shadow 120ms,opacity 120ms;
   cursor:pointer;
+  touch-action:none;
 }
+.drag-handle{
+  position:absolute;left:0;top:0;bottom:0;width:8px;
+  cursor:grab;display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity 120ms;z-index:10;
+  background:rgba(0,0,0,.08);
+}
+.drag-handle::after{content:'⋮⋮';font-size:8px;color:rgba(0,0,0,.4);letter-spacing:-2px}
+.gevt:hover .drag-handle{opacity:1}
+.drag-handle:active,.gevt.dragging .drag-handle{cursor:grabbing;opacity:1}
 .gevt:hover{box-shadow:var(--sh2);z-index:20}
 .gevt.dragging{opacity:.7;box-shadow:var(--sh3);z-index:100;cursor:grabbing}
 .gevt.done-ev{opacity:.45}.gevt.done-ev .etitle{text-decoration:line-through}
@@ -501,7 +511,7 @@ function rGantt(){
       const el=document.createElement('div');
       el.className=`gevt ${e.client}-ev${e.isRoutine?' routine-ev':''}${isDone?' done-ev':''}`;
       el.style.cssText=`top:${tp}px;height:${hp}px;left:${cl}%;width:${cw}%;border-left-color:${cli.color}`;
-      el.innerHTML=`<div class="etime">${e.time}${e.duration?' · '+e.duration+'m':''}</div><div class="etitle">${e.title}</div>${e.notes?`<div class="esub">${e.notes}</div>`:''}<input type="checkbox" class="echk" ${isDone?'checked':''} title="Concluído">`;
+      el.innerHTML=`<div class="drag-handle" data-drag="1"></div><div class="etime">${e.time}${e.duration?' · '+e.duration+'m':''}</div><div class="etitle">${e.title}</div>${e.notes?`<div class="esub">${e.notes}</div>`:''}<input type="checkbox" class="echk" ${isDone?'checked':''} title="Concluído">`;
       el.querySelector('.echk').onchange=ev2=>{ev2.stopPropagation();A.done[dk]=ev2.target.checked;save();rGantt()};
       // Tooltip
       el.addEventListener('mouseenter',ev2=>{const t=document.getElementById('tt');document.getElementById('ttt').textContent=`${fwdf(d)} · ${e.time}`;document.getElementById('ttl').textContent=e.title;document.getElementById('tts').textContent=e.notes||cli.name;t.classList.add('show');posTT(ev2)});
@@ -521,25 +531,30 @@ function rGantt(){
 
 function posTT(ev){const t=document.getElementById('tt');let x=ev.clientX+14,y=ev.clientY-10;if(x+210>window.innerWidth)x=ev.clientX-210;if(y+80>window.innerHeight)y=ev.clientY-80;t.style.left=x+'px';t.style.top=y+'px'}
 
-// DRAG com pointer events — funciona em Safari, Chrome, Firefox
+// DRAG via handle dedicada — Safari/Chrome/Firefox/iOS
 function makeDrag(el,ev,origTop,totH){
-  let startY=0,startTop=origTop,isDragging=false,moved=false;
-  el.addEventListener('pointerdown',e=>{
-    if(e.target.type==='checkbox')return;
-    startY=e.clientY;startTop=parseFloat(el.style.top)||origTop;isDragging=false;moved=false;
-    el.setPointerCapture(e.pointerId);
-    e.stopPropagation();
+  let startY=0,startTop=origTop,isDragging=false,captureId=null;
+  const handle=el.querySelector('[data-drag]');
+  if(!handle)return;
+  handle.addEventListener('pointerdown',e=>{
+    e.stopPropagation();e.preventDefault();
+    startY=e.clientY;startTop=parseFloat(el.style.top)||origTop;isDragging=false;
+    captureId=e.pointerId;
+    handle.setPointerCapture(e.pointerId);
+    document.getElementById('tt').classList.remove('show');
   });
-  el.addEventListener('pointermove',e=>{
-    if(!el.hasPointerCapture(e.pointerId))return;
+  handle.addEventListener('pointermove',e=>{
+    if(captureId===null||e.pointerId!==captureId)return;
     const dy=e.clientY-startY;
-    if(!isDragging&&Math.abs(dy)>5){isDragging=true;el.classList.add('dragging');document.getElementById('tt').classList.remove('show')}
-    if(isDragging){moved=true;el.style.top=Math.max(0,Math.min(totH-20,startTop+dy))+'px'}
+    if(!isDragging&&Math.abs(dy)>3){isDragging=true;el.classList.add('dragging')}
+    if(isDragging){el.style.top=Math.max(0,Math.min(totH-20,startTop+dy))+'px'}
   });
-  el.addEventListener('pointerup',e=>{
-    el.releasePointerCapture(e.pointerId);
-    if(!isDragging||!moved){el.classList.remove('dragging');return}
+  handle.addEventListener('pointerup',e=>{
+    if(e.pointerId!==captureId)return;
+    captureId=null;
     el.classList.remove('dragging');
+    if(!isDragging)return;
+    isDragging=false;
     const newTop=parseFloat(el.style.top);
     const newMins=Math.round((newTop/HPX*60+SH*60)/15)*15;
     const nh=Math.floor(newMins/60),nm2=newMins%60;
@@ -548,7 +563,7 @@ function makeDrag(el,ev,origTop,totH){
     if(idx>-1){A.events[idx].time=nt;save()}
     rGantt();
   });
-  el.addEventListener('pointercancel',()=>{el.classList.remove('dragging')});
+  handle.addEventListener('pointercancel',()=>{captureId=null;isDragging=false;el.classList.remove('dragging')});
 }
 
 // ── EVENT MODAL ──

@@ -511,8 +511,6 @@ function rGantt(){
       el.addEventListener('mousemove',posTT);el.addEventListener('mouseleave',()=>document.getElementById('tt').classList.remove('show'));
       // Duplo clique = editar (eventos manuais)
       if(!e.isRoutine){
-        el.addEventListener('dblclick',ev2=>{ev2.stopPropagation();openEvModal(e.id)});
-        // DRAG com pointer events (Safari-compatible)
         makeDrag(el,e,tp,totH);
       }
       grid.appendChild(el);
@@ -524,18 +522,17 @@ function rGantt(){
 
 function posTT(ev){const t=document.getElementById('tt');let x=ev.clientX+14,y=ev.clientY-10;if(x+210>window.innerWidth)x=ev.clientX-210;if(y+80>window.innerHeight)y=ev.clientY-80;t.style.left=x+'px';t.style.top=y+'px'}
 
-// DRAG robusto — pointer events no elemento inteiro, compatível Safari/iOS/Chrome
+// DRAG + DUPLO CLIQUE — robusto, Safari/Chrome/Firefox/iOS
 function makeDrag(el, ev, origTop, totH){
-  let pid=null, startY=0, startTop=0, isDrag=false, dblTimer=null, clicks=0;
+  let pid=null, startY=0, startTop=0, moved=false;
+  let lastClick=0;
 
   el.addEventListener('pointerdown', function(e){
     if(e.target.type==='checkbox') return;
-    e.preventDefault();
-    e.stopPropagation();
     pid=e.pointerId;
     startY=e.clientY;
     startTop=parseFloat(el.style.top)||origTop;
-    isDrag=false;
+    moved=false;
     el.setPointerCapture(pid);
     document.getElementById('tt').classList.remove('show');
   });
@@ -543,22 +540,20 @@ function makeDrag(el, ev, origTop, totH){
   el.addEventListener('pointermove', function(e){
     if(e.pointerId!==pid) return;
     const dy=e.clientY-startY;
-    if(!isDrag && Math.abs(dy)>6){
-      isDrag=true;
+    if(Math.abs(dy)>8){
+      moved=true;
       el.classList.add('dragging');
-    }
-    if(isDrag){
       el.style.top=Math.max(0,Math.min(totH-24,startTop+dy))+'px';
     }
   });
 
   el.addEventListener('pointerup', function(e){
     if(e.pointerId!==pid) return;
-    el.releasePointerCapture(pid);
     pid=null;
     el.classList.remove('dragging');
-    if(isDrag){
-      isDrag=false;
+
+    if(moved){
+      moved=false;
       const newTop=parseFloat(el.style.top);
       const nm=Math.round((newTop/HPX*60+SH*60)/15)*15;
       const nh=Math.floor(nm/60), nmin=nm%60;
@@ -568,19 +563,19 @@ function makeDrag(el, ev, origTop, totH){
       rGantt();
       return;
     }
-    // Detecção de duplo clique via contagem
-    clicks++;
-    if(clicks===1){
-      dblTimer=setTimeout(()=>{ clicks=0; }, 350);
-    } else if(clicks>=2){
-      clearTimeout(dblTimer);
-      clicks=0;
+
+    // Duplo clique manual
+    const now=Date.now();
+    if(now-lastClick<400){
+      lastClick=0;
       openEvModal(ev.id);
+    } else {
+      lastClick=now;
     }
   });
 
   el.addEventListener('pointercancel', function(){
-    pid=null; isDrag=false;
+    pid=null; moved=false;
     el.classList.remove('dragging');
   });
 }

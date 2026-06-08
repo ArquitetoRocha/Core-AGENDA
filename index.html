@@ -449,6 +449,7 @@ const A={
   bin:JSON.parse(localStorage.getItem('coreBin')||'{"events":[],"tasks":[],"clients":[],"routines":[]}'),
   log:JSON.parse(localStorage.getItem('coreLog')||'{"entries":[]}'),
   backup:JSON.parse(localStorage.getItem('coreBackup')||'{"snapshots":[]}'),
+  reschedules:JSON.parse(localStorage.getItem('coreReschedules')||'[]'),
   cli:{},types:{routine:true,event:true},
   mon:monday(new Date()),tab:'gantt',
   editEvId:null,editTaskId:null,editCliId:null,taskFilter:'all',
@@ -491,6 +492,7 @@ function save(){
     localStorage.setItem('coreBin',JSON.stringify(A.bin));
     localStorage.setItem('coreLog',JSON.stringify(A.log));
     localStorage.setItem('coreBackup',JSON.stringify(A.backup));
+    localStorage.setItem('coreReschedules',JSON.stringify(A.reschedules));
   }catch(e){
     console.error('❌ Erro ao salvar:',e.message);
     logChange('save_error','system','storage',e.message);
@@ -519,25 +521,8 @@ function togCli(c){A.cli[c]=!A.cli[c];if(A.tab==='gantt')rGantt()}
 function togType(t){A.types[t]=!A.types[t];if(A.tab==='gantt')rGantt()}
 
 // CASCATA
-function relocateEvent(evId,newTime,visited){
-  if(!visited)visited=new Set();
-  if(visited.has(evId))return;
-  visited.add(evId);
-  const idx=A.events.findIndex(x=>x.id===evId);
-  if(idx<0)return;
-  const ev=A.events[idx];
-  if(ev.locked)return;
-  ev.time=newTime;
-  const evS=timeToMins(ev.time),evE=evS+(ev.duration||60);
-  A.events.forEach(other=>{
-    if(other.id===evId||visited.has(other.id)||other.date!==ev.date||other.locked)return;
-    const os=timeToMins(other.time),oe=os+(other.duration||60);
-    if(evS<oe&&evE>os){
-      const pushH=Math.floor(evE/60),pushM=evE%60;
-      relocateEvent(other.id,pad(Math.min(pushH,EH-1))+':'+pad(pushM),visited);
-    }
-  });
-}
+// FASE 2: relocateEvent() removida — cascata automática incompatível com arquitetura.
+// Nenhum evento move outro evento. Conflitos apenas sinalizam.
 
 // RENDER SEMANA
 function rGantt(){
@@ -581,9 +566,16 @@ function rGantt(){
     const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!overridden.has(e.id)):[];
     const dayUsr=A.types.event?userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!e.isRoutine):[];
     const allEvs=[...dayRt,...dayUsr].sort((a,b)=>timeToMins(a.time)-timeToMins(b.time));
-    // Conflitos
-    const tm={};allEvs.forEach(e=>{if(!tm[e.time])tm[e.time]=[];tm[e.time].push(e)});
-    Object.values(tm).forEach(g=>{if(g.length>1)conflicts.push(fwd(d)+' '+g[0].time)});
+    // FASE 2: Detecção de conflitos por intervalo (não apenas horário exato de início)
+    // Analisa eventos + rotinas + overrides — todo compromisso que ocupa horário
+    for(let ai=0;ai<allEvs.length;ai++){
+      for(let bi=ai+1;bi<allEvs.length;bi++){
+        const ea=allEvs[ai],eb=allEvs[bi];
+        const sa=timeToMins(ea.time),xa=sa+(ea.duration||60);
+        const sb=timeToMins(eb.time),xb=sb+(eb.duration||60);
+        if(sa<xb&&xa>sb)conflicts.push(fwd(d)+' '+ea.time);
+      }
+    }
     // Overlap groups
     function overlapGroup(ev,list){const s=timeToMins(ev.time),e2=s+(ev.duration||60);return list.filter(o=>{const os=timeToMins(o.time),oe=os+(o.duration||60);return s<oe&&e2>os})}
     const placed=new Set();
@@ -633,6 +625,7 @@ function rGantt(){
               } else {
                 const ov={id:uid(),title:ge.title,date:ds,time:ge.time,duration:ge.duration,client:ge.client,type:'work',desc:ge.notes||'',notes:'',isRoutine:false,locked:false,_overrideRoutine:ge.id};
                 A.events.push(ov);
+                snapshot('create');
                 save();
                 openEvModal(ov.id);
               }
@@ -691,8 +684,17 @@ function attachDrag(el,ev,origTop,totH){
       const nt=yToTime(parseFloat(el.style.top));
       const idx=A.events.findIndex(x=>x.id===ev.id);
       if(idx>-1){
+        const oldTime=A.events[idx].time;
+        const oldDate=A.events[idx].date;
+        // FASE 2: Registrar remarcação ANTES de alterar
+        if(oldTime!==nt){
+          logReschedule(ev.id,ev.title,oldDate,oldTime,oldDate,nt,'drag');
+        }
+        // Apenas o evento arrastado é alterado — sem cascata
         A.events[idx].time=nt;
-        relocateEvent(ev.id,nt,new Set([ev.id]));
+        // FASE 2: Detectar conflitos e sinalizar — nunca corrigir
+        detectConflicts(oldDate);
+        snapshot('create');
         save();
       }
       rGantt();
@@ -745,15 +747,22 @@ function saveEv(){
   if(A.editEvId){
     const idx=A.events.findIndex(x=>x.id===A.editEvId);
     if(idx>-1){
-      // Preserva campos internos que não estão no formulário
-      const keep={isRoutine:A.events[idx].isRoutine,_overrideRoutine:A.events[idx]._overrideRoutine,_taskId:A.events[idx]._taskId,recur:A.events[idx].recur,id:A.events[idx].id};
+      const prev=A.events[idx];
+      // FASE 2: Registrar remarcação se data ou hora mudaram
+      if(prev.date!==data.date||prev.time!==data.time){
+        logReschedule(prev.id,prev.title,prev.date,prev.time,data.date,data.time,'modal');
+      }
+      const keep={isRoutine:prev.isRoutine,_overrideRoutine:prev._overrideRoutine,_taskId:prev._taskId,recur:prev.recur,id:prev.id};
       A.events[idx]=Object.assign({},keep,data);
     }
   } else {
     const ev=Object.assign({id:uid(),isRoutine:false},data);
     if(document.getElementById('eRecur').checked)ev.recur={freq:document.getElementById('eFreq').value,until:document.getElementById('eUntil').value};
     A.events.push(ev);
+    snapshot('create');
   }
+  // FASE 2: Detectar conflitos na data do evento — apenas sinaliza, nunca corrige
+  detectConflicts(data.date);
   save();closeEvModal();
   if(A.tab==='gantt')rGantt();
   if(A.tab==='year')rYear();
@@ -1017,6 +1026,59 @@ document.getElementById('eT').addEventListener('keydown',function(e){if(e.key===
 document.getElementById('tTitle').addEventListener('keydown',function(e){if(e.key==='Enter')saveTask()});
 
 function exportJSON(){const blob=new Blob([JSON.stringify({events:A.events,tasks:A.tasks,routines:A.routines,clients:A.clients},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
+
+// ============================================================
+// FASE 2: AGENDA FUNCIONAL
+// ============================================================
+
+// Registrar remarcação — chamada por drag e modal
+// source: 'drag' | 'modal'
+function logReschedule(evId,evTitle,oldDate,oldTime,newDate,newTime,source){
+  if(oldDate===newDate&&oldTime===newTime)return;
+  A.reschedules.push({
+    evId:evId,
+    evTitle:evTitle,
+    oldDate:oldDate,
+    oldTime:oldTime,
+    newDate:newDate,
+    newTime:newTime,
+    source:source,
+    changedAt:new Date().toISOString()
+  });
+  logChange('reschedule','event',evId,'['+source+'] '+oldDate+' '+oldTime+' → '+newDate+' '+newTime);
+}
+
+// Detectar conflitos por intervalo em uma data específica
+// Analisa eventos persistidos + rotinas expandidas + overrides
+// NUNCA move eventos, NUNCA impede salvamento — apenas atualiza cbar
+function detectConflicts(date){
+  const wS=new Date(A.mon),wE=new Date(A.mon);wE.setDate(wE.getDate()+6);
+  const rtEvs=weekR(A.mon);
+  const userEvs=expRecur(A.events,wS,wE);
+  const overridden=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===date).map(x=>x._overrideRoutine));
+  const dayRt=rtEvs.filter(e=>e.date===date&&!overridden.has(e.id));
+  const dayUsr=userEvs.filter(e=>e.date===date&&!e.isRoutine);
+  const all=[...dayRt,...dayUsr];
+  const found=[];
+  for(let ai=0;ai<all.length;ai++){
+    for(let bi=ai+1;bi<all.length;bi++){
+      const ea=all[ai],eb=all[bi];
+      const sa=timeToMins(ea.time),xa=sa+(ea.duration||60);
+      const sb=timeToMins(eb.time),xb=sb+(eb.duration||60);
+      if(sa<xb&&xa>sb)found.push(ea.time+' × '+eb.time);
+    }
+  }
+  const cb=document.getElementById('cbar');
+  if(cb){
+    if(found.length){
+      cb.classList.add('show');
+      cb.textContent='Conflito: '+found.slice(0,3).join(', ')+'.';
+    } else {
+      // Não esconde — rGantt() fará re-verificação completa da semana
+    }
+  }
+  return found;
+}
 
 // ============================================================
 // FASE 1: INTEGRIDADE DOS DADOS

@@ -117,6 +117,15 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
    EVENTO
    ========================================================= */
 .gevt{position:absolute;padding:3px 18px 3px 7px;border-left:3px solid transparent;border-radius:4px;overflow:hidden;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;min-height:20px;transition:box-shadow 120ms,opacity 120ms}
+.gevt.locked-ev{cursor:default;opacity:.88}
+.gevt.locked-ev::after{content:'🔒';position:absolute;top:3px;right:18px;font-size:8px;opacity:.5}
+.gevt.selected-ev{outline:2px solid var(--b600);outline-offset:1px}
+/* Barra de seleção múltipla */
+#sel-bar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:10px;padding:10px 18px;display:none;align-items:center;gap:12px;font-size:12px;box-shadow:0 8px 24px rgba(14,17,22,.3);z-index:300}
+#sel-bar.show{display:flex}
+#sel-bar button{padding:5px 12px;border:1px solid rgba(255,255,255,.2);border-radius:6px;background:transparent;color:#fff;font-size:11px;cursor:pointer}
+#sel-bar button.danger{border-color:var(--d600);color:var(--d600)}
+#sel-bar button:hover{background:rgba(255,255,255,.1)}
 .gevt:hover{z-index:20;box-shadow:0 3px 12px rgba(14,17,22,.14)}
 .gevt.dragging{opacity:.72;box-shadow:0 8px 24px rgba(14,17,22,.18);z-index:200;cursor:grabbing;transition:none}
 .gevt.pushed{animation:push-flash .4s ease}
@@ -125,7 +134,10 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 .etime{font-family:'JetBrains Mono',monospace;font-size:9px;opacity:.65;white-space:nowrap}
 .etitle{font-size:10px;font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .esub{font-size:9px;opacity:.58;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.echk{position:absolute;top:4px;right:3px;width:11px;height:11px;cursor:pointer;accent-color:var(--s600);z-index:5}
+.echk{position:absolute;top:4px;right:16px;width:11px;height:11px;cursor:pointer;accent-color:var(--s600);z-index:5}
+.ev-del-btn{position:absolute;top:2px;right:2px;width:13px;height:13px;border:none;background:transparent;color:inherit;font-size:11px;cursor:pointer;opacity:0;border-radius:2px;display:flex;align-items:center;justify-content:center;z-index:6;padding:0;line-height:1}
+.gevt:hover .ev-del-btn{opacity:.55}
+.ev-del-btn:hover{opacity:1!important;background:rgba(181,57,46,.2);color:var(--d600)}
 .vier-ev{background:rgba(225,236,245,.9);color:#0d3060;border-left-color:var(--b600)}
 .dimer-ev{background:rgba(251,241,222,.9);color:var(--a700);border-left-color:var(--a500)}
 .core-ev{background:rgba(236,239,243,.9);color:var(--g600);border-left-color:var(--g500)}
@@ -382,6 +394,15 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
   </div>
 </div>
 
+<!-- SELECTION BAR -->
+<div id="sel-bar">
+  <span id="sel-count">0 selecionados</span>
+  <button onclick="lockSelected()">🔒 Travar</button>
+  <button onclick="unlockSelected()">🔓 Destravar</button>
+  <button class="danger" onclick="deleteSelected()">Apagar selecionados</button>
+  <button onclick="clearSelection()">Cancelar</button>
+</div>
+
 <!-- TOOLTIP -->
 <div class="tt" id="tt"><div class="ttt" id="ttt"></div><div class="ttl" id="ttl"></div><div class="tts" id="tts"></div></div>
 
@@ -393,6 +414,10 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
     <div class="frow"><div class="fg"><label class="fl">Data</label><input class="fi" id="eD" type="date"></div><div class="fg"><label class="fl">Hora</label><input class="fi" id="eH" type="time" value="09:00"></div></div>
     <div class="frow"><div class="fg"><label class="fl">Duração (min)</label><input class="fi" id="eDur" type="number" value="60" min="15" step="15"></div><div class="fg"><label class="fl">Cliente</label><select class="fsel" id="eCli"></select></div></div>
     <div class="fg"><label class="fl">Tipo</label><select class="fsel" id="eTp"><option value="meeting">Reunião presencial</option><option value="online">Reunião online</option><option value="work">Bloco de trabalho</option><option value="deadline">Prazo / entrega</option></select></div>
+    <div class="fg" style="flex-direction:row;align-items:center;gap:8px;background:var(--bone);border:1px solid var(--m200);border-radius:6px;padding:8px 12px">
+      <input type="checkbox" id="eLocked" style="accent-color:var(--b600);width:14px;height:14px;cursor:pointer">
+      <label for="eLocked" style="font-size:12px;color:var(--g600);cursor:pointer">Travar evento — cascata não altera este horário</label>
+    </div>
     <div class="fg"><label class="fl">Descrição</label><textarea class="fta" id="eDesc" placeholder="Contexto, o que aconteceu, próximos passos..."></textarea></div>
     <div class="recur-sec" id="recurSec">
       <label class="recur-toggle"><input type="checkbox" id="eRecur" onchange="togRecur()">Evento recorrente</label>
@@ -454,7 +479,7 @@ const A={
   done:JSON.parse(localStorage.getItem('coreDone')||'{}'),
   cli:{},types:{routine:true,event:true},
   mon:monday(new Date()),tab:'gantt',
-  editEvId:null,editTaskId:null,editCliId:null,taskFilter:'all',
+  editEvId:null,editTaskId:null,editCliId:null,taskFilter:'all',selSet:new Set(),
   zoomIdx:2,   // índice em ZOOM_LEVELS; 1.0x default
   dayOffset:0  // qual dia da semana é o primeiro visível (0–6)
 };
@@ -522,6 +547,7 @@ function relocateEvent(evId,newTime,visitedIds){
   const idx=A.events.findIndex(x=>x.id===evId);
   if(idx<0)return;
   const ev=A.events[idx];
+  if(ev.locked)return; // evento travado — não mover
   const oldDate=ev.date;
   // newTime pode ser objeto {date,time} ou só string time
   if(typeof newTime==='object'){ev.date=newTime.date;ev.time=newTime.time;}
@@ -532,6 +558,7 @@ function relocateEvent(evId,newTime,visitedIds){
   A.events.forEach(other=>{
     if(other.id===evId||visitedIds.has(other.id))return;
     if(other.date!==ev.date)return;
+    if(other.locked)return;
     const os=timeToMins(other.time),oe=os+(other.duration||60);
     if(evStart<oe&&evEnd>os){
       // Conflito! Empurra 'other' para logo após este evento
@@ -610,7 +637,8 @@ function rGantt(){
     // Label Vier
     if(isBlk){const b=document.createElement('div');b.className='wv-blkl';b.innerHTML='<span>VIER · CRICÍUMA</span>';col.appendChild(b)}
     // Coletar eventos do dia
-    const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]):[];
+    const overriddenRtIds=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine));
+    const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!overriddenRtIds.has(e.id)):[];
     const dayUsr=A.types.event?userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!e.isRoutine):[];
     const allEvs=[...dayRt,...dayUsr].sort((a,b)=>timeToMins(a.time)-timeToMins(b.time));
     // Detectar conflitos
@@ -639,8 +667,14 @@ function rGantt(){
         el.dataset.evid=ge.id;
         el.dataset.date=ds;
         const descHtml=ge.desc?'<div class="esub">'+ge.desc+'</div>':'';
-        el.innerHTML='<div class="etime">'+ge.time+(ge.duration?' · '+ge.duration+'m':'')+'</div><div class="etitle">'+ge.title+'</div>'+descHtml+'<input type="checkbox" class="echk" '+(isDone?'checked':'')+'>'; 
+        const delBtn=ge.isRoutine?'':'<button class="ev-del-btn" title="Apagar">×</button>';
+        el.innerHTML='<div class="etime">'+ge.time+(ge.duration?' · '+ge.duration+'m':'')+'</div><div class="etitle">'+ge.title+'</div>'+descHtml+delBtn+'<input type="checkbox" class="echk" '+(isDone?'checked':'')+'>'; 
         el.querySelector('.echk').addEventListener('change',function(ev2){ev2.stopPropagation();A.done[dk]=ev2.target.checked;save();el.classList.toggle('done-ev',ev2.target.checked)});
+        const delbtn=el.querySelector('.ev-del-btn');
+        if(delbtn)delbtn.addEventListener('click',function(ev2){ev2.stopPropagation();if(!confirm('Apagar "'+ge.title+'"?'))return;A.events=A.events.filter(x=>x.id!==ge.id);save();rGantt()});
+        el.addEventListener('click',function(ev2){
+          if(ev2.ctrlKey||ev2.metaKey){ev2.stopPropagation();toggleSelect(ge.id,el);}
+        });
         // Tooltip
         el.addEventListener('mouseenter',ev2=>{document.getElementById('ttt').textContent=`${fwdf(d)} · ${ge.time}`;document.getElementById('ttl').textContent=ge.title;document.getElementById('tts').textContent=ge.desc||ge.notes||cli.name;document.getElementById('tt').classList.add('show');posTT(ev2)});
         el.addEventListener('mousemove',posTT);
@@ -650,7 +684,19 @@ function rGantt(){
         el.addEventListener('pointerup',function(pev){
           if(pev.target.type==='checkbox')return;
           const now=Date.now();
-          if(now-lastClick<380){lastClick=0;if(ge.isRoutine)openEvModal(null,{time:ge.time,client:ge.client,title:ge.title,duration:ge.duration,date:ds});else openEvModal(ge.id)}
+          if(now-lastClick<380){lastClick=0;
+          if(ge.isRoutine){
+            // Verifica se já existe override para esta rotina neste dia
+            const ovIdx=A.events.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
+            if(ovIdx>-1){openEvModal(A.events[ovIdx].id);}
+            else{
+              // Cria override e abre modal para editar
+              const ovId=uid();
+              A.events.push({id:ovId,title:ge.title,date:ds,time:ge.time,duration:ge.duration,client:ge.client,type:'work',desc:ge.desc||'',notes:ge.notes||'',isRoutine:false,_overrideRoutine:ge.id});
+              save();
+              openEvModal(ovId);
+            }
+          } else {openEvModal(ge.id);}}
           else lastClick=now;
         });
         // Drag — só eventos manuais
@@ -688,6 +734,7 @@ function attachDrag(el,ev,origTop,totH,dateStr){
   let pid=null,sy=0,st=0,moved=false;
   el.addEventListener('pointerdown',function(e){
     if(e.target.type==='checkbox')return;
+    if(ev.locked)return; // travar drag
     pid=e.pointerId;sy=e.clientY;st=parseFloat(el.style.top)||origTop;
     moved=false;el.setPointerCapture(pid);
     document.getElementById('tt').classList.remove('show');
@@ -723,10 +770,10 @@ function attachDrag(el,ev,origTop,totH,dateStr){
   });
 }
 
-function openEvModal(id,prefill){A.editEvId=id||null;buildSel('eCli');document.getElementById('evMttl').textContent=id?'Editar evento':'Novo evento';document.getElementById('evDelBtn').style.display=id?'block':'none';document.getElementById('recurSec').style.display=id?'none':'block';if(id){const ev=A.events.find(x=>x.id===id);if(!ev)return;document.getElementById('eT').value=ev.title;document.getElementById('eD').value=ev.date;document.getElementById('eH').value=ev.time;document.getElementById('eDur').value=ev.duration||60;document.getElementById('eCli').value=ev.client;document.getElementById('eTp').value=ev.type||'work';document.getElementById('eDesc').value=ev.desc||''}else{document.getElementById('eD').value=prefill?.date||fiso(new Date());document.getElementById('eH').value=prefill?.time||'09:00';document.getElementById('eT').value=prefill?.title||'';document.getElementById('eDesc').value='';document.getElementById('eDur').value=prefill?.duration||60;document.getElementById('eRecur').checked=false;document.getElementById('recurOpts').classList.remove('show');if(prefill?.client)setTimeout(()=>document.getElementById('eCli').value=prefill.client,50)}document.getElementById('evModal').classList.add('open');setTimeout(()=>document.getElementById('eT').focus(),160)}
+function openEvModal(id,prefill){A.editEvId=id||null;buildSel('eCli');document.getElementById('evMttl').textContent=id?'Editar evento':'Novo evento';document.getElementById('evDelBtn').style.display=id?'block':'none';document.getElementById('recurSec').style.display=id?'none':'block';if(id){const ev=A.events.find(x=>x.id===id);if(!ev)return;document.getElementById('eT').value=ev.title;document.getElementById('eD').value=ev.date;document.getElementById('eH').value=ev.time;document.getElementById('eDur').value=ev.duration||60;document.getElementById('eCli').value=ev.client;document.getElementById('eTp').value=ev.type||'work';document.getElementById('eDesc').value=ev.desc||'';document.getElementById('eLocked').checked=!!ev.locked;}else{document.getElementById('eD').value=prefill?.date||fiso(new Date());document.getElementById('eH').value=prefill?.time||'09:00';document.getElementById('eT').value=prefill?.title||'';document.getElementById('eDesc').value='';document.getElementById('eDur').value=prefill?.duration||60;document.getElementById('eRecur').checked=false;document.getElementById('recurOpts').classList.remove('show');document.getElementById('eLocked').checked=false;if(prefill?.client)setTimeout(()=>document.getElementById('eCli').value=prefill.client,50)}document.getElementById('evModal').classList.add('open');setTimeout(()=>document.getElementById('eT').focus(),160)}
 function closeEvModal(){document.getElementById('evModal').classList.remove('open');A.editEvId=null}
 function togRecur(){document.getElementById('recurOpts').classList.toggle('show',document.getElementById('eRecur').checked);if(document.getElementById('eRecur').checked&&!document.getElementById('eUntil').value){const d=new Date();d.setMonth(d.getMonth()+2);document.getElementById('eUntil').value=fiso(d)}}
-function saveEv(){const t=document.getElementById('eT').value.trim(),d=document.getElementById('eD').value,h=document.getElementById('eH').value;if(!t||!d||!h){alert('Preencha título, data e hora.');return}const data={title:t,date:d,time:h,duration:parseInt(document.getElementById('eDur').value)||60,client:document.getElementById('eCli').value,type:document.getElementById('eTp').value,desc:document.getElementById('eDesc').value.trim(),notes:''};if(A.editEvId){const idx=A.events.findIndex(x=>x.id===A.editEvId);if(idx>-1)A.events[idx]={...A.events[idx],...data}}else{const ev={id:uid(),...data,isRoutine:false};if(document.getElementById('eRecur').checked)ev.recur={freq:document.getElementById('eFreq').value,until:document.getElementById('eUntil').value};A.events.push(ev)}save();closeEvModal();if(A.tab==='gantt')rGantt();if(A.tab==='year')rYear()}
+function saveEv(){const t=document.getElementById('eT').value.trim(),d=document.getElementById('eD').value,h=document.getElementById('eH').value;if(!t||!d||!h){alert('Preencha título, data e hora.');return}const locked=document.getElementById('eLocked').checked;const data={title:t,date:d,time:h,duration:parseInt(document.getElementById('eDur').value)||60,client:document.getElementById('eCli').value,type:document.getElementById('eTp').value,desc:document.getElementById('eDesc').value.trim(),notes:'',locked:locked};if(A.editEvId){const idx=A.events.findIndex(x=>x.id===A.editEvId);if(idx>-1)A.events[idx]={...A.events[idx],...data}}else{const ev={id:uid(),...data,isRoutine:false};if(document.getElementById('eRecur').checked)ev.recur={freq:document.getElementById('eFreq').value,until:document.getElementById('eUntil').value};A.events.push(ev)}save();closeEvModal();if(A.tab==='gantt')rGantt();if(A.tab==='year')rYear()}
 function delEv(){if(A.editEvId&&confirm('Deletar?')){A.events=A.events.filter(x=>x.id!==A.editEvId);save();closeEvModal();rGantt()}}
 
 function rTasks(){const list=document.getElementById('tklist');list.innerHTML='';const today=fiso(new Date());let tasks=[...A.tasks];if(A.taskFilter==='pending')tasks=tasks.filter(t=>!t.done);else if(A.taskFilter==='today')tasks=tasks.filter(t=>t.due===today&&!t.done);else if(A.taskFilter==='overdue')tasks=tasks.filter(t=>t.due&&t.due<today&&!t.done);else if(A.taskFilter==='done')tasks=tasks.filter(t=>t.done);tasks.sort((a,b)=>{if(a.done!==b.done)return a.done?1:-1;const p={high:0,med:1,low:2};return p[a.prio||'med']-p[b.prio||'med']});if(!tasks.length){const e=document.createElement('div');e.style.cssText='text-align:center;padding:40px;color:var(--g400);font-size:13px';e.textContent='Nenhuma tarefa.';list.appendChild(e);return}const pm={high:'Alta',med:'Média',low:'Baixa'},tm={task:'Tarefa',call:'Ligação',charge:'Cobrança',doc:'Documento',meeting:'Reunião'};tasks.forEach(t=>{const cli=cliById(t.client),isOv=t.due&&t.due<today&&!t.done,isTod=t.due===today&&!t.done;const card=document.createElement('div');card.className='tkcard'+(t.done?' done-task':'');card.innerHTML='<input type="checkbox" class="tkchk" '+(t.done?'checked':'')+' onchange="doneTask(\'' + t.id + '\')">' +
@@ -770,6 +817,35 @@ function addRoutine(){const name=prompt('Nome da rotina:');if(!name)return;const
 document.getElementById('eT').addEventListener('keydown',e=>{if(e.key==='Enter')saveEv()});
 document.getElementById('tTitle').addEventListener('keydown',e=>{if(e.key==='Enter')saveTask()});
 
+function toggleSelect(id,el){
+  if(!A.selSet)A.selSet=new Set();
+  if(A.selSet.has(id)){A.selSet.delete(id);el.classList.remove('selected-ev');}
+  else{A.selSet.add(id);el.classList.add('selected-ev');}
+  updateSelBar();
+}
+function updateSelBar(){
+  const bar=document.getElementById('sel-bar');
+  const n=A.selSet?A.selSet.size:0;
+  if(n>0){bar.classList.add('show');document.getElementById('sel-count').textContent=n+' selecionado'+(n>1?'s':'');}
+  else{bar.classList.remove('show');}
+}
+function clearSelection(){A.selSet=new Set();updateSelBar();rGantt();}
+function deleteSelected(){
+  if(!A.selSet||!A.selSet.size)return;
+  if(!confirm('Apagar '+A.selSet.size+' evento(s)?'))return;
+  A.events=A.events.filter(x=>!A.selSet.has(x.id));
+  A.selSet=new Set();save();updateSelBar();rGantt();
+}
+function lockSelected(){
+  if(!A.selSet)return;
+  A.events.forEach(x=>{if(A.selSet.has(x.id))x.locked=true;});
+  save();clearSelection();
+}
+function unlockSelected(){
+  if(!A.selSet)return;
+  A.events.forEach(x=>{if(A.selSet.has(x.id))x.locked=false;});
+  save();clearSelection();
+}
 function exportJSON(){const blob=new Blob([JSON.stringify({events:A.events,tasks:A.tasks,routines:A.routines,clients:A.clients},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
 
 document.getElementById('hdate').textContent=ffull(new Date());

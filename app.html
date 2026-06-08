@@ -1178,8 +1178,18 @@ function exportJSON(){
   var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
 }
 function resetApp(){
-  if(!confirm('Limpar localStorage e restaurar? Exporte seus dados antes se quiser.'))return;
-  ['coreEv','coreTasks','coreRot','coreCli','coreDone'].forEach(function(k){try{localStorage.removeItem(k)}catch(e){}});
+  if(!confirm('Resetar estado da plataforma?\n\nTarefas, clientes e rotinas serão PRESERVADOS.\nApenas eventos manuais e estado de UI serão limpos.'))return;
+  // Preservar tarefas, clientes e rotinas
+  var tasks=localStorage.getItem('coreTasks');
+  var clients=localStorage.getItem('coreCli');
+  var routines=localStorage.getItem('coreRot');
+  // Limpar apenas eventos e estado
+  try{localStorage.removeItem('coreEv')}catch(e){}
+  try{localStorage.removeItem('coreDone')}catch(e){}
+  // Restaurar dados preservados
+  if(tasks)localStorage.setItem('coreTasks',tasks);
+  if(clients)localStorage.setItem('coreCli',clients);
+  if(routines)localStorage.setItem('coreRot',routines);
   location.reload();
 }
 

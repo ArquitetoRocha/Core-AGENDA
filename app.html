@@ -605,9 +605,7 @@ function rGantt(){
         // Conteúdo: sem template literal
         const descEl=ge.desc?'<div class="esub">'+ge.desc+'</div>':'';
         // Ações: checkbox sempre, delete só em não-rotina
-        const isPast=(ds<today)||(ds===today&&timeToMins(ge.time)<new Date().getHours()*60+new Date().getMinutes());
-        const showDel=!ge.isRoutine||(ge.isRoutine&&isPast);
-        const actHtml='<div class="ev-actions">'+(showDel?'<button class="ev-del" title="Apagar">×</button>':'')+'<input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>';
+        const actHtml='<div class="ev-actions"><button class="ev-del" title="Substituir por tempo livre">×</button><input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>';
         el.innerHTML='<div class="etime">'+ge.time+(ge.duration?' · '+ge.duration+'m':'')+'</div><div class="etitle">'+ge.title+'</div>'+descEl+actHtml;
         // Checkbox done
         el.querySelector('.ev-cb').addEventListener('change',function(ev2){ev2.stopPropagation();A.done[dk]=ev2.target.checked;save();el.classList.toggle('done-ev',ev2.target.checked)});

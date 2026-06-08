@@ -520,14 +520,28 @@ function relocateEvent(evId,newTime,visited){
   });
 }
 
-// Substitui qualquer evento/rotina deletada por bloco LIVRE
+// Substitui evento deletado por bloco LIVRE — só se o slot estiver vazio
 function replaceWithFree(date,time,duration,client){
+  const dur=duration||60;
+  const newS=timeToMins(time),newE=newS+dur;
+  // Verificar se existe cobertura no slot (rotinas da semana + eventos manuais)
+  const wS=new Date(A.mon),wE=new Date(A.mon);wE.setDate(wE.getDate()+6);
+  const rtEvs=weekR(A.mon);
+  const allDay=[
+    ...rtEvs.filter(e=>e.date===date),
+    ...A.events.filter(e=>e.date===date&&e.title!=='Livre · encaixe')
+  ];
+  const covered=allDay.some(function(e){
+    const es=timeToMins(e.time),ee=es+(e.duration||60);
+    return newS<ee&&newE>es;
+  });
+  if(covered)return; // slot já coberto — não criar livre
   A.events.push({
     id:uid(),
     title:'Livre · encaixe',
     date:date,
     time:time,
-    duration:duration||60,
+    duration:dur,
     client:client||'core',
     type:'work',
     desc:'',

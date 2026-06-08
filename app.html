@@ -816,17 +816,39 @@ function togTaskRecur(){
   document.getElementById('tRecurOpts').classList.toggle('show',document.getElementById('tRecur').checked);
   if(document.getElementById('tRecur').checked&&!document.getElementById('tUntil').value){const d=new Date();d.setMonth(d.getMonth()+3);document.getElementById('tUntil').value=fiso(d)}
 }
+function genTaskEvents(taskId,title,cli,due,recur){
+  // Remove eventos antigos desta tarefa
+  A.events=A.events.filter(x=>x._taskId!==taskId);
+  if(!due)return;
+  const makeEv=function(date){return{id:'task_'+uid(),title:'⚑ '+title,date:date,time:'08:00',duration:30,client:cli,type:'deadline',notes:'',desc:'',isRoutine:false,_taskId:taskId}};
+  if(!recur||!recur.freq){A.events.push(makeEv(due));return;}
+  // Gerar datas recorrentes
+  let cur=new Date(due);
+  const until=recur.until?new Date(recur.until):new Date(new Date(due).setFullYear(new Date(due).getFullYear()+1));
+  let safety=0;
+  while(cur<=until&&safety<200){
+    A.events.push(makeEv(fiso(cur)));
+    safety++;
+    if(recur.freq==='daily')cur.setDate(cur.getDate()+1);
+    else if(recur.freq==='weekly')cur.setDate(cur.getDate()+7);
+    else if(recur.freq==='biweekly')cur.setDate(cur.getDate()+14);
+    else if(recur.freq==='monthly')cur.setMonth(cur.getMonth()+1);
+    else break;
+  }
+}
 function saveTask(){
   const title=document.getElementById('tTitle').value.trim();if(!title){alert('Título obrigatório.');return}
   const due=document.getElementById('tDue').value,cli=document.getElementById('tCli').value;
-  const data={title,due,client:cli,prio:document.getElementById('tPrio').value,type:document.getElementById('tType').value,desc:document.getElementById('tDesc').value.trim()};
-  if(document.getElementById('tRecur').checked){data.recur={freq:document.getElementById('tFreq').value,until:document.getElementById('tUntil').value}}else{data.recur=null}
+  const isRecur=document.getElementById('tRecur').checked;
+  const recur=isRecur?{freq:document.getElementById('tFreq').value,until:document.getElementById('tUntil').value}:null;
+  const data={title,due,client:cli,prio:document.getElementById('tPrio').value,type:document.getElementById('tType').value,desc:document.getElementById('tDesc').value.trim(),recur};
   if(A.editTaskId){
     const idx=A.tasks.findIndex(x=>x.id===A.editTaskId);
-    if(idx>-1){A.tasks[idx]=Object.assign({},A.tasks[idx],data);A.events=A.events.filter(x=>x._taskId!==A.editTaskId);if(due)A.events.push({id:'task_'+uid(),title:'⚑ '+title,date:due,time:'08:00',duration:30,client:cli,type:'deadline',notes:'',desc:'',isRoutine:false,_taskId:A.editTaskId})}
+    if(idx>-1){A.tasks[idx]=Object.assign({},A.tasks[idx],data);genTaskEvents(A.editTaskId,title,cli,due,recur);}
   } else {
-    const t=Object.assign({id:uid(),done:false},data);A.tasks.push(t);
-    if(due)A.events.push({id:'task_'+t.id,title:'⚑ '+title,date:due,time:'08:00',duration:30,client:cli,type:'deadline',notes:'',desc:'',isRoutine:false,_taskId:t.id});
+    const t=Object.assign({id:uid(),done:false},data);
+    A.tasks.push(t);
+    genTaskEvents(t.id,title,cli,due,recur);
   }
   save();closeTaskModal();rTasks();
 }

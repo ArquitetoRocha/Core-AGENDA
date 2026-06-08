@@ -89,8 +89,6 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 .wv-day:last-child{border-right:none}
 .wv-day.blk{background:repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(30,90,145,.015) 8px,rgba(30,90,145,.015) 16px)}
 .wv-day.wknd{background:rgba(216,144,43,.015)}
-.wv-lunch{position:absolute;left:0;right:0;background:repeating-linear-gradient(-45deg,rgba(14,17,22,.04),rgba(14,17,22,.04) 4px,transparent 4px,transparent 10px);border-top:1px solid var(--m200);border-bottom:1px solid var(--m200);pointer-events:none;z-index:4;display:flex;align-items:center;justify-content:center}
-.wv-lunch span{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--g400);opacity:.7}
 .wv-hline{position:absolute;left:0;right:0;pointer-events:none}
 .wv-hline.maj{border-top:1px solid var(--m200)}
 .wv-hline.min{border-top:1px solid var(--m100)}
@@ -113,6 +111,8 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 .ev-actions{position:absolute;top:3px;right:2px;display:flex;align-items:center;gap:2px}
 .ev-cb{width:11px;height:11px;cursor:pointer;accent-color:var(--s600)}
 .ev-del{width:13px;height:13px;border:none;background:transparent;color:inherit;font-size:11px;cursor:pointer;opacity:0;border-radius:2px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center}
+.gevt.split-pm{border-left-style:dashed;border-radius:0 4px 4px 0}
+.gevt.split-am{border-radius:4px 4px 0 0}
 .gevt:hover .ev-del{opacity:.5}
 .ev-del:hover{opacity:1!important;background:rgba(181,57,46,.18);color:var(--d600)}
 .vier-ev{background:rgba(225,236,245,.9);color:#0d3060;border-left-color:var(--b600)}
@@ -438,7 +438,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 </div>
 
 <script>
-const SH=7,EH=20,BASE_HPX=60,BLOCKED=[2,4],LUNCH_S=12*60,LUNCH_E=13*60;
+const SH=7,EH=20,BASE_HPX=60,BLOCKED=[2,4];
 const ZOOM_LEVELS=[0.7,0.85,1.0,1.2,1.5,1.8,2.2];
 const COLORS=['#1E5A91','#D8902B','#3A4250','#2F7D5B','#B5392E','#8C5A14','#5C6675','#0B2746'];
 
@@ -511,16 +511,13 @@ function relocateEvent(evId,newTime,visited){
   const ev=A.events[idx];
   if(ev.locked)return;
   ev.time=newTime;
-  let evS=timeToMins(ev.time),evE=evS+(ev.duration||60);
-  // Garantir que o evento não invade o intervalo
-  if(evS<LUNCH_E&&evE>LUNCH_S&&evS>=LUNCH_S){evS=LUNCH_E;ev.time=pad(Math.floor(LUNCH_E/60))+':'+pad(LUNCH_E%60)}
+  const evS=timeToMins(ev.time),evE=evS+(ev.duration||60);
   A.events.forEach(other=>{
     if(other.id===evId||visited.has(other.id)||other.date!==ev.date||other.locked)return;
     const os=timeToMins(other.time),oe=os+(other.duration||60);
     if(evS<oe&&evE>os){
-      let pushMins=evE;
-      if(pushMins>=LUNCH_S&&pushMins<LUNCH_E)pushMins=LUNCH_E; // pular intervalo
-      relocateEvent(other.id,pad(Math.floor(pushMins/60))+':'+pad(pushMins%60),visited);
+      const pushH=Math.floor(evE/60),pushM=evE%60;
+      relocateEvent(other.id,pad(Math.min(pushH,EH-1))+':'+pad(pushM),visited);
     }
   });
 }
@@ -591,10 +588,6 @@ function rGantt(){
     col.style.height=totH+'px';
     col.dataset.date=ds;
     for(let h=SH;h<EH;h++){const l=document.createElement('div');l.className='wv-hline'+(h%2===0?' maj':' min');l.style.top=((h-SH)*HP)+'px';col.appendChild(l)}
-    // Faixa de intervalo 12:00-13:00
-    const lunchDiv=document.createElement('div');lunchDiv.className='wv-lunch';
-    lunchDiv.style.top=minsToY(LUNCH_S)+'px';lunchDiv.style.height=minsToY(LUNCH_E)-minsToY(LUNCH_S)+'px';
-    lunchDiv.innerHTML='<span>intervalo</span>';col.appendChild(lunchDiv);
     if(isTod){const nm=new Date().getHours()*60+new Date().getMinutes();if(nm>=SH*60&&nm<=EH*60){const nl=document.createElement('div');nl.className='wv-nowline';nl.style.top=minsToY(nm)+'px';col.appendChild(nl)}}
     if(isBlk){const b=document.createElement('div');b.className='wv-blkl';b.innerHTML='<span>VIER · CRICÍUMA</span>';col.appendChild(b)}
     // Eventos: rotinas com override suprimidas
@@ -617,77 +610,90 @@ function rGantt(){
       const gc=grp.length;
       grp.forEach((ge,gi)=>{
         const sm=timeToMins(ge.time),em=sm+(ge.duration||60);
-        const tp=minsToY(sm),hp2=Math.max(minsToY(em)-tp,22);
         const cw=Math.floor(100/gc),cl=gi*cw;
         const dk=ge.id+'_'+ds,isDone=!!A.done[dk];
         const cli=cliById(ge.client);
         const isLocked=!!ge.locked,isSel=A.selSet.has(ge.id);
-        const el=document.createElement('div');
-        el.className='gevt '+ge.client+'-ev'+(ge.isRoutine?' routine-ev':'')+(isDone?' done-ev':'')+(isLocked?' locked-ev':'')+(isSel?' selected-ev':'');
-        el.style.cssText='top:'+tp+'px;height:'+hp2+'px;left:calc('+cl+'% + 2px);width:calc('+cw+'% - 4px);border-left-color:'+cli.color;
-        // Conteúdo: sem template literal
-        const descEl=ge.desc?'<div class="esub">'+ge.desc+'</div>':'';
-        // Ações: checkbox sempre, delete só em não-rotina
-        const actHtml='<div class="ev-actions"><button class="ev-del" title="Substituir por tempo livre">×</button><input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>';
-        el.innerHTML='<div class="etime">'+ge.time+(ge.duration?' · '+ge.duration+'m':'')+'</div><div class="etitle">'+ge.title+'</div>'+descEl+actHtml;
-        // Checkbox done
-        el.querySelector('.ev-cb').addEventListener('change',function(ev2){ev2.stopPropagation();A.done[dk]=ev2.target.checked;save();el.classList.toggle('done-ev',ev2.target.checked)});
-        // Botão delete
-        const delBtn=el.querySelector('.ev-del');
-        if(delBtn)delBtn.addEventListener('click',function(ev2){
-          ev2.stopPropagation();
-          if(!confirm('Substituir "'+ge.title+'" por tempo livre?'))return;
-          const freeDate=ds,freeTime=ge.time,freeDur=ge.duration||60,freeCli=ge.client;
-          if(ge.isRoutine){
-            const existing=A.events.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
-            if(existing>-1){A.events.splice(existing,1);}
-            A.done['_del_'+ge.id+'_'+ds]=true;
-          } else {
-            A.events=A.events.filter(x=>x.id!==ge.id);
-          }
-          replaceWithFree(freeDate,freeTime,freeDur,freeCli);
-          save();rGantt();
-        });
-        // Ctrl+click = seleção múltipla
-        el.addEventListener('click',function(ev2){if(ev2.ctrlKey||ev2.metaKey){ev2.stopPropagation();toggleSel(ge.id,el)}});
-        // Tooltip
-        el.addEventListener('mouseenter',function(ev2){document.getElementById('ttt').textContent=fwdf(d)+' · '+ge.time;document.getElementById('ttl').textContent=ge.title;document.getElementById('tts').textContent=ge.desc||ge.notes||cli.name;document.getElementById('tt').classList.add('show');posTT(ev2)});
-        el.addEventListener('mousemove',posTT);
-        el.addEventListener('mouseleave',function(){document.getElementById('tt').classList.remove('show')});
-        // Duplo clique
-        let lastTap=0;
-        el.addEventListener('pointerup',function(pev){
-          if(pev.target.classList.contains('ev-cb')||pev.target.classList.contains('ev-del'))return;
-          const now=Date.now();
-          if(now-lastTap<380){
-            lastTap=0;
-            if(ge.isRoutine){
-              // Override: busca ou cria
-              const existing=A.events.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
-              if(existing>-1){
-                openEvModal(A.events[existing].id);
+
+        // Calcular segmentos: se cruza intervalo, partir em dois blocos
+        const segments=[];
+        if(sm<LUNCH_S&&em>LUNCH_S){
+          // Bloco manhã: sm → LUNCH_S
+          segments.push({startM:sm,endM:LUNCH_S,part:'am'});
+          // Bloco tarde: LUNCH_E → LUNCH_E + (em - LUNCH_S)
+          const afternoon=LUNCH_E+(em-LUNCH_S);
+          segments.push({startM:LUNCH_E,endM:afternoon,part:'pm'});
+        } else {
+          segments.push({startM:sm,endM:em,part:'full'});
+        }
+
+        segments.forEach(function(seg,si){
+          const tp=minsToY(seg.startM);
+          const hp2=Math.max(minsToY(seg.endM)-tp,22);
+          const el=document.createElement('div');
+          el.className='gevt '+ge.client+'-ev'+(ge.isRoutine?' routine-ev':'')+(isDone?' done-ev':'')+(isLocked?' locked-ev':'')+(isSel?' selected-ev':'')+(seg.part==='pm'?' split-pm':'')+(seg.part==='am'?' split-am':'');
+          el.style.cssText='top:'+tp+'px;height:'+hp2+'px;left:calc('+cl+'% + 2px);width:calc('+cw+'% - 4px);border-left-color:'+cli.color;
+
+          // Conteúdo: só o bloco AM ou full mostra título completo e ações
+          const descEl=(si===0&&ge.desc)?'<div class="esub">'+ge.desc+'</div>':'';
+          const timeLabel=seg.part==='pm'?('→ '+pad(Math.floor(seg.endM/60))+':'+pad(seg.endM%60)):ge.time+(ge.duration?' · '+ge.duration+'m':'');
+          const actHtml=si===0?'<div class="ev-actions"><button class="ev-del" title="Substituir por tempo livre">×</button><input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>':'';
+          const titleHtml=si===0?'<div class="etitle">'+ge.title+'</div>':'<div class="etitle" style="opacity:.65;font-style:italic">'+ge.title+'</div>';
+          el.innerHTML='<div class="etime">'+timeLabel+'</div>'+titleHtml+descEl+actHtml;
+
+          if(si===0){
+            // Checkbox done — só no primeiro bloco
+            el.querySelector('.ev-cb').addEventListener('change',function(ev2){ev2.stopPropagation();A.done[dk]=ev2.target.checked;save();el.classList.toggle('done-ev',ev2.target.checked)});
+            // Botão delete — só no primeiro bloco
+            const delBtn=el.querySelector('.ev-del');
+            if(delBtn)delBtn.addEventListener('click',function(ev2){
+              ev2.stopPropagation();
+              if(!confirm('Substituir "'+ge.title+'" por tempo livre?'))return;
+              const freeDate=ds,freeTime=ge.time,freeDur=ge.duration||60,freeCli=ge.client;
+              if(ge.isRoutine){
+                const existing=A.events.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
+                if(existing>-1){A.events.splice(existing,1);}
+                A.done['_del_'+ge.id+'_'+ds]=true;
               } else {
-                const ov={id:uid(),title:ge.title,date:ds,time:ge.time,duration:ge.duration,client:ge.client,type:'work',desc:ge.notes||'',notes:'',isRoutine:false,locked:false,_overrideRoutine:ge.id};
-                A.events.push(ov);
-                save();
-                openEvModal(ov.id);
+                A.events=A.events.filter(x=>x.id!==ge.id);
               }
-            } else {
-              openEvModal(ge.id);
-            }
-          } else {lastTap=now}
+              replaceWithFree(freeDate,freeTime,freeDur,freeCli);
+              save();rGantt();
+            });
+          }
+
+          // Ctrl+click = seleção múltipla (ambos os blocos)
+          el.addEventListener('click',function(ev2){if(ev2.ctrlKey||ev2.metaKey){ev2.stopPropagation();toggleSel(ge.id,el)}});
+          // Tooltip
+          el.addEventListener('mouseenter',function(ev2){document.getElementById('ttt').textContent=fwdf(d)+' · '+ge.time;document.getElementById('ttl').textContent=ge.title+(seg.part==='pm'?' (continua)':'');document.getElementById('tts').textContent=ge.desc||ge.notes||cli.name;document.getElementById('tt').classList.add('show');posTT(ev2)});
+          el.addEventListener('mousemove',posTT);
+          el.addEventListener('mouseleave',function(){document.getElementById('tt').classList.remove('show')});
+
+          // Duplo clique — ambos os blocos abrem o mesmo modal
+          let lastTap=0;
+          el.addEventListener('pointerup',function(pev){
+            if(pev.target.classList.contains('ev-cb')||pev.target.classList.contains('ev-del'))return;
+            const now=Date.now();
+            if(now-lastTap<380){
+              lastTap=0;
+              if(ge.isRoutine){
+                const existing=A.events.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
+                if(existing>-1){openEvModal(A.events[existing].id);}
+                else{const ov={id:uid(),title:ge.title,date:ds,time:ge.time,duration:ge.duration,client:ge.client,type:'work',desc:ge.notes||'',notes:'',isRoutine:false,locked:false,_overrideRoutine:ge.id};A.events.push(ov);save();openEvModal(ov.id);}
+              } else {openEvModal(ge.id);}
+            } else {lastTap=now}
+          });
+
+          // Drag só no bloco AM/full e não-locked e não-rotina
+          if(si===0&&!ge.isRoutine&&!ge.locked)attachDrag(el,ge,tp,totH);
+          col.appendChild(el);
         });
-        // Drag só em não-locked e não-rotina
-        if(!ge.isRoutine&&!ge.locked)attachDrag(el,ge,tp,totH);
-        col.appendChild(el);
       });
     });
     // Click vazio
     col.addEventListener('click',function(ev2){
       if(ev2.target===col||ev2.target.classList.contains('wv-hline')||ev2.target.classList.contains('wv-blkl')){
         const y=ev2.clientY-col.getBoundingClientRect().top;
-        const clickMins=Math.round((y/hpx()*60+SH*60)/15)*15;
-        if(clickMins>=LUNCH_S&&clickMins<LUNCH_E)return; // bloqueado — intervalo
         document.getElementById('eD').value=ds;
         document.getElementById('eH').value=yToTime(y);
         openEvModal();
@@ -726,10 +732,7 @@ function attachDrag(el,ev,origTop,totH){
     pid=null;el.classList.remove('dragging');
     if(moved){
       moved=false;
-      let nt=yToTime(parseFloat(el.style.top));
-      // Se caiu no intervalo, empurrar para 13:00
-      const ntMins=timeToMins(nt),evEnd=ntMins+(ev.duration||60);
-      if(ntMins<LUNCH_E&&evEnd>LUNCH_S){nt=pad(Math.floor(LUNCH_E/60))+':'+pad(LUNCH_E%60);}
+      const nt=yToTime(parseFloat(el.style.top));
       const idx=A.events.findIndex(x=>x.id===ev.id);
       if(idx>-1){
         A.events[idx].time=nt;
@@ -782,9 +785,6 @@ function togRecur(){
 function saveEv(){
   const t=document.getElementById('eT').value.trim(),d=document.getElementById('eD').value,h=document.getElementById('eH').value;
   if(!t||!d||!h){alert('Preencha título, data e hora.');return}
-  const evStartM=timeToMins(h),evEndM=evStartM+(parseInt(document.getElementById('eDur').value)||60);
-  if(evStartM>=LUNCH_S&&evStartM<LUNCH_E){alert('Horário de intervalo (12:00–13:00) bloqueado.');return}
-  if(evStartM<LUNCH_S&&evEndM>LUNCH_S){alert('O evento invade o intervalo (12:00–13:00). Ajuste a duração ou o horário.');return}
   const data={title:t,date:d,time:h,duration:parseInt(document.getElementById('eDur').value)||60,client:document.getElementById('eCli').value,type:document.getElementById('eTp').value,desc:document.getElementById('eDesc').value.trim(),notes:'',locked:document.getElementById('eLocked').checked};
   if(A.editEvId){
     const idx=A.events.findIndex(x=>x.id===A.editEvId);

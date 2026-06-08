@@ -1133,6 +1133,54 @@ function lockSelected(){A.selSet.forEach(function(id){var i=A.activities.findInd
 function unlockSelected(){A.selSet.forEach(function(id){var i=A.activities.findIndex(function(x){return x.id===id});if(i>-1)A.activities[i].locked=false;});save();clearSelection();}
 
 
+// ── V1: FUNÇÕES DE DADOS PARA O GANTT ────────────────────────
+function getBlocksForDay(dow,date){
+  return A.blocks.filter(function(b){
+    if(b.dayOfWeek!==dow)return false;
+    if(b.recurrence==='weekly')return true;
+    if(b.recurrence==='none')return false;
+    if(b.recurrence==='biweekly'){
+      var created=new Date(b.createdAt||date);
+      var target=new Date(date);
+      var diffWeeks=Math.round((target-created)/(7*24*60*60*1000));
+      return diffWeeks%2===0;
+    }
+    if(b.recurrence==='monthly'){
+      var cd=new Date(b.createdAt||date);
+      var td=new Date(date);
+      return cd.getDate()===td.getDate()||
+             (Math.floor(td.getDate()/7)===Math.floor(cd.getDate()/7));
+    }
+    return true;
+  });
+}
+
+function getActivitiesForDay(date){
+  return A.activities.filter(function(a){
+    return a.date===date && a.time && a.status!=='cancelled' && !a._isTemplate;
+  });
+}
+
+function calcFreeSlots(blocks,acts){
+  var cap_start=SH*60,cap_end=EH*60;
+  var occupied=[];
+  blocks.forEach(function(b){
+    occupied.push({s:timeToMins(b.startTime),e:timeToMins(b.startTime)+b.durationMinutes});
+  });
+  acts.forEach(function(a){
+    var s=timeToMins(a.time);
+    occupied.push({s:s,e:s+(a.durationMinutes||a.duration||60)});
+  });
+  occupied.sort(function(a,b){return a.s-b.s});
+  var free=[],cursor=cap_start;
+  occupied.forEach(function(slot){
+    if(slot.s>cursor)free.push({start:cursor,end:slot.s});
+    cursor=Math.max(cursor,slot.e);
+  });
+  if(cursor<cap_end)free.push({start:cursor,end:cap_end});
+  return free;
+}
+
 // ── RENDER LEGADO (mantido durante transição para Dia 2) ────
 function weekR(mon){
   const evs=[],add=(di,h,m,dur,title,cli,notes)=>{const d=new Date(mon);d.setDate(d.getDate()+di);evs.push({id:'rt_'+di+'_'+h+'_'+m,title,date:fiso(d),time:pad(h)+':'+pad(m),duration:dur,client:cli,notes:notes||'',desc:'',isRoutine:true})};
@@ -1224,24 +1272,15 @@ function attachDrag(el,ev,origTop,totH){
     if(moved){
       moved=false;
       const nt=yToTime(parseFloat(el.style.top));
-      // FASE 3: tenta taskV3 primeiro, depois legado
-      const idx3=A.taskV3.findIndex(x=>x.id===ev.id);
-      if(idx3>-1){
-        const oldTime=A.taskV3[idx3].time;
-        const oldDate=A.taskV3[idx3].date;
+      // V1: salva em A.activities
+      const idxA=A.activities.findIndex(function(x){return x.id===ev.id});
+      if(idxA>-1){
+        const oldTime=A.activities[idxA].time;
+        const oldDate=A.activities[idxA].date;
         if(oldTime!==nt) logReschedule(ev.id,ev.title,oldDate,oldTime,oldDate,nt,'drag');
-        A.taskV3[idx3].time=nt;
-        A.taskV3[idx3].updatedAt=new Date().toISOString();
-        detectConflicts(oldDate);snapshot('create');save();
-      } else {
-        const idx=A.events.findIndex(x=>x.id===ev.id);
-        if(idx>-1){
-          const oldTime=A.events[idx].time;
-          const oldDate=A.events[idx].date;
-          if(oldTime!==nt) logReschedule(ev.id,ev.title,oldDate,oldTime,oldDate,nt,'drag');
-          A.events[idx].time=nt;
-          detectConflicts(oldDate);snapshot('create');save();
-        }
+        A.activities[idxA].time=nt;
+        A.activities[idxA].updatedAt=new Date().toISOString();
+        snapshot('create');save();
       }
       rGantt();
     }
@@ -1326,12 +1365,10 @@ function _rGanttLegacy(){
   const totH=(EH-SH)*HP;
   for(let h=SH;h<=EH;h++){const s=document.createElement('div');s.className='wv-tslot'+(h%2===0?' maj':'');s.style.height=HP+'px';s.textContent=h<EH?pad(h)+':00':'';TC.appendChild(s)}
   const today=fiso(new Date()),wS=new Date(A.mon),wE=new Date(A.mon);wE.setDate(wE.getDate()+6);
-  // FASE 3: Agenda consome taskV3 como fonte primária
-  // Legado (A.events via weekR + expRecur) mantido enquanto schemaVersion < 3
-  const v3Sched=tasksForWeek(A.mon);
-  const rtEvs=weekR(A.mon),userEvs=expRecur(A.events,wS,wE),conflicts=[];
+  // V1: Blocks + Activities como fontes únicas
+  const conflicts=[];
   // allEvs unificado: taskV3 com data+hora + legado (sem duplicatas)
-  const v3Ids=new Set(v3Sched.map(t=>t.id));
+  const v3Ids=new Set(v3Sched?v3Sched.map(t=>t.id):[]);
   for(let i=A.dayOffset;i<A.dayOffset+vis;i++){
     const d=new Date(A.mon);d.setDate(d.getDate()+i);
     const ds=fiso(d),dow=d.getDay(),isBlk=BLOCKED.includes(dow),isWknd=dow===0||dow===6,isTod=ds===today;
@@ -1349,16 +1386,49 @@ function _rGanttLegacy(){
     for(let h=SH;h<EH;h++){const l=document.createElement('div');l.className='wv-hline'+(h%2===0?' maj':' min');l.style.top=((h-SH)*HP)+'px';col.appendChild(l)}
     if(isTod){const nm=new Date().getHours()*60+new Date().getMinutes();if(nm>=SH*60&&nm<=EH*60){const nl=document.createElement('div');nl.className='wv-nowline';nl.style.top=minsToY(nm)+'px';col.appendChild(nl)}}
     if(isBlk){const b=document.createElement('div');b.className='wv-blkl';b.innerHTML='<span>VIER · CRICÍUMA</span>';col.appendChild(b)}
-    // Eventos: rotinas com override suprimidas — lê A.events (legado) e A.taskV3 (Fase 3.5)
-    const overridden=new Set([
-      ...A.events.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine),
-      ...A.taskV3.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine)
-    ]);
-    const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!overridden.has(e.id)&&!v3Ids.has(e.id)):[];
-    const dayUsr=A.types.event?userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!e.isRoutine&&!v3Ids.has(e.id)):[];
-    // FASE 3: tasks v3 com horário para este dia
-    const dayV3=v3Sched.filter(t=>t.date===ds&&(A.cli[t.clientId]||A.cli[t.client]));
-    const allEvs=[...dayRt,...dayUsr,...dayV3].sort((a,b)=>timeToMins(a.time)-timeToMins(b.time));
+    // V1: Blocks como faixa de fundo + Activities como blocos sólidos
+    const dayBlocks=getBlocksForDay(dow,ds);
+    const dayActs=getActivitiesForDay(ds);
+    // Renderizar blocos estruturais (faixa de fundo)
+    dayBlocks.forEach(function(blk){
+      const sm=timeToMins(blk.startTime),em=sm+blk.durationMinutes;
+      const tp=minsToY(sm),hp2=Math.max(minsToY(em)-tp,8);
+      const be=document.createElement('div');
+      be.className='wv-block-bg cat-'+blk.category;
+      be.style.cssText='top:'+tp+'px;height:'+hp2+'px;left:2px;right:2px;position:absolute;border-radius:4px;opacity:.22;pointer-events:none;z-index:1;';
+      var bc=blk.color;
+      if(!bc){var catColors={presence:'#1E5A91',ritual:'#5C6675',admin:'#8A95A4',review:'#3A4250',strategy:'#0B2746',development:'#2F7D5B'};bc=catColors[blk.category]||'#8A95A4';}
+      be.style.background=bc;
+      be.style.borderLeft='3px solid '+bc;
+      be.style.opacity='0.25';
+      col.appendChild(be);
+      // Label do bloco
+      if(hp2>28){
+        const bl=document.createElement('div');
+        bl.style.cssText='position:absolute;top:'+tp+'px;left:6px;right:6px;font-size:9px;font-family:"Space Grotesk",system-ui;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:'+bc+';opacity:.7;pointer-events:none;z-index:2;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding-top:3px;';
+        bl.textContent=blk.title;
+        col.appendChild(bl);
+      }
+    });
+    // Tempo livre — calcular e exibir
+    var freeSlots=calcFreeSlots(dayBlocks,dayActs);
+    freeSlots.forEach(function(fs){
+      if(fs.end-fs.start<15)return;
+      var tp=minsToY(fs.start),hp2=Math.max(minsToY(fs.end)-tp,4);
+      var fe=document.createElement('div');
+      fe.style.cssText='position:absolute;top:'+tp+'px;height:'+hp2+'px;left:2px;right:2px;z-index:1;pointer-events:none;border-radius:3px;';
+      fe.style.background='rgba(46,160,67,0.06)';
+      if(hp2>32){
+        var fl=document.createElement('div');
+        var mins=fs.end-fs.start;
+        var hrs=Math.floor(mins/60),mns=mins%60;
+        fl.style.cssText='position:absolute;top:3px;left:5px;font-size:9px;color:rgba(47,125,91,.55);font-family:"JetBrains Mono",monospace;pointer-events:none;';
+        fl.textContent=(hrs>0?hrs+'h':'')+(mns>0?(hrs>0?' ':'')+mns+'m':'');
+        fe.appendChild(fl);
+      }
+      col.appendChild(fe);
+    });
+    const allEvs=dayActs.sort(function(a,b){return timeToMins(a.time)-timeToMins(b.time)});
     // FASE 2: Detecção de conflitos por intervalo (não apenas horário exato de início)
     // Analisa eventos + rotinas + overrides — todo compromisso que ocupa horário
     for(let ai=0;ai<allEvs.length;ai++){
@@ -1378,47 +1448,34 @@ function _rGanttLegacy(){
       grp.forEach(x=>placed.add(x.id));
       const gc=grp.length;
       grp.forEach((ge,gi)=>{
-        const sm=timeToMins(ge.time),em=sm+(ge.duration||60);
+        const geDur=ge.durationMinutes||ge.duration||60;
+        const sm=timeToMins(ge.time),em=sm+geDur;
         const tp=minsToY(sm),hp2=Math.max(minsToY(em)-tp,22);
         const cw=Math.floor(100/gc),cl=gi*cw;
-        const dk=ge.id+'_'+ds;
-        // FASE 3: suporte a campos v3 (clientId) e legado (client)
+        // V1: Activity usa clientId direto, cor do projeto ou cliente
         const geClientId=ge.clientId||ge.client||'';
-        const geIsTemplate=ge.template!==undefined?ge.template:!!ge.isRoutine;
-        const isDone=ge._doneByDate?!!ge._doneByDate[ds]:!!A.done[dk];
-        const cli=cliById(geClientId);
+        const geIsTemplate=!!(ge._isTemplate||ge.template||ge.isRoutine);
+        const isDone=ge.status==='completed'||(ge._doneByDate?!!ge._doneByDate[ds]:false);
+        const evColor=colorForActivity(ge);
         const isLocked=!!ge.locked,isSel=A.selSet.has(ge.id);
         const el=document.createElement('div');
         el.className='gevt '+geClientId+'-ev'+(geIsTemplate?' routine-ev':'')+(isDone?' done-ev':'')+(isLocked?' locked-ev':'')+(isSel?' selected-ev':'');
-        el.style.cssText='top:'+tp+'px;height:'+hp2+'px;left:calc('+cl+'% + 2px);width:calc('+cw+'% - 4px);border-left-color:'+cli.color;
+        el.style.cssText='top:'+tp+'px;height:'+hp2+'px;left:calc('+cl+'% + 2px);width:calc('+cw+'% - 4px);border-left-color:'+evColor+';z-index:10;';
         const descEl=ge.desc?'<div class="esub">'+ge.desc+'</div>':'';
-        const actHtml='<div class="ev-actions">'+(geIsTemplate?'':'<button class="ev-del" title="Apagar">×</button>')+'<input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>';
-        el.innerHTML='<div class="etime">'+ge.time+(ge.duration?' · '+ge.duration+'m':'')+'</div><div class="etitle">'+ge.title+'</div>'+descEl+actHtml;
-        // Checkbox done — v3 usa _doneByDate, legado usa A.done
+        const actHtml='<div class="ev-actions"><button class="ev-del" title="Apagar">×</button><input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>';
+        el.innerHTML='<div class="etime">'+ge.time+' \xb7 '+geDur+'m</div><div class="etitle">'+ge.title+'</div>'+descEl+actHtml;
+        // V1: checkbox done → doneActivity
         el.querySelector('.ev-cb').addEventListener('change',function(ev2){
           ev2.stopPropagation();
-          if(ge._doneByDate!==undefined){
-            // task v3
-            const idx3=A.taskV3.findIndex(x=>x.id===ge.id);
-            if(idx3>-1){A.taskV3[idx3]._doneByDate=A.taskV3[idx3]._doneByDate||{};A.taskV3[idx3]._doneByDate[ds]=ev2.target.checked;}
-          } else {
-            A.done[dk]=ev2.target.checked;
-          }
-          save();el.classList.toggle('done-ev',ev2.target.checked);
+          doneActivity(ge.id);
+          el.classList.toggle('done-ev',ev2.target.checked);
         });
-        // Botão delete — v3 remove de taskV3, legado remove de A.events
+        // V1: delete → deleteActivity
         const delBtn=el.querySelector('.ev-del');
         if(delBtn)delBtn.addEventListener('click',function(ev2){
           ev2.stopPropagation();if(!confirm('Apagar "'+ge.title+'"?'))return;
-          if(ge._doneByDate!==undefined){
-            // task v3
-            softDelete('task',ge.id,ge);
-            A.taskV3=A.taskV3.filter(x=>x.id!==ge.id);
-          } else {
-            softDelete('event',ge.id,ge);
-            A.events=A.events.filter(x=>x.id!==ge.id);
-          }
-          snapshot('delete');save();rGantt();
+          deleteActivity(ge.id);
+          rGantt();
         });
         // Ctrl+click = seleção múltipla
         el.addEventListener('click',function(ev2){if(ev2.ctrlKey||ev2.metaKey){ev2.stopPropagation();toggleSel(ge.id,el)}});
@@ -1426,35 +1483,13 @@ function _rGanttLegacy(){
         el.addEventListener('mouseenter',function(ev2){document.getElementById('ttt').textContent=fwdf(d)+' · '+ge.time;document.getElementById('ttl').textContent=ge.title;document.getElementById('tts').textContent=ge.desc||ge.notes||cli.name;document.getElementById('tt').classList.add('show');posTT(ev2)});
         el.addEventListener('mousemove',posTT);
         el.addEventListener('mouseleave',function(){document.getElementById('tt').classList.remove('show')});
-        // Duplo clique
+        // Duplo clique → abre modal da activity V1
         let lastTap=0;
         el.addEventListener('pointerup',function(pev){
           if(pev.target.classList.contains('ev-cb')||pev.target.classList.contains('ev-del'))return;
-          const now=Date.now();
-          if(now-lastTap<380){
-            lastTap=0;
-            if(geIsTemplate){
-              // Override: busca ou cria — FASE 3.5: override vai para A.taskV3
-              const existing=A.taskV3.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
-              if(existing>-1){
-                openTv3Modal(A.taskV3[existing].id);
-              } else {
-                const now=new Date().toISOString();
-                const ov={id:uid(),title:ge.title,date:ds,time:ge.time||ge.time,duration:ge.duration||ge.durationMinutes||60,durationMinutes:ge.duration||ge.durationMinutes||60,clientId:geClientId,client:geClientId,type:ge.type||'coord_tecnica',modality:ge.modality||null,status:'not_started',priority:ge.priority||'medium',prio:ge.priority||'medium',done:false,locked:false,template:false,isDelivery:false,deliveryType:null,recur:null,desc:ge.notes||ge.desc||'',notes:'',plannedMinutes:null,actualMinutes:null,_overrideRoutine:ge.id,_rid:null,_doneByDate:{},createdAt:now,updatedAt:now,completedAt:null};
-                A.taskV3.push(ov);
-                snapshot('create');
-                save();
-                openTv3Modal(ov.id);
-              }
-            } else {
-              // task v3 ou evento legado
-              if(ge._doneByDate!==undefined){
-                openTv3Modal(ge.id);
-              } else {
-                openEvModal(ge.id);
-              }
-            }
-          } else {lastTap=now}
+          const now2=Date.now();
+          if(now2-lastTap<380){lastTap=0;openTv3Modal(ge.id);}
+          else{lastTap=now2;}
         });
         // Drag só em não-template e não-locked
         if(!geIsTemplate&&!ge.locked)attachDrag(el,ge,tp,totH);
@@ -1684,7 +1719,9 @@ function openTv3Modal(id, prefill){
 
   if(isEdit){
     // Tenta taskV3 primeiro; fallback para legado normalizado
-    let t = A.taskV3.find(x=>x.id===id);
+    // V1: procura em A.activities primeiro
+    let t = A.activities.find(function(x){return x.id===id});
+    if(!t) t = A.taskV3.find(function(x){return x.id===id});
     if(!t){
       // Legado: normaliza para exibição no modal v3
       const leg = A.tasks.find(x=>x.id===id) || A.events.find(x=>x.id===id);
@@ -1777,10 +1814,26 @@ function saveTaskV3(){
   };
 
   if(A.editTaskV3Id){
-    // Edição: tenta taskV3 primeiro, migra legado se necessário
+    // V1: tenta A.activities primeiro
+    var idxA1=A.activities.findIndex(function(x){return x.id===A.editTaskV3Id});
+    if(idxA1>-1){
+      saveActivity({
+        title:data.title,clientId:data.clientId||data.client||'core',
+        projectId:data.projectId||null,type:mapLegacyType(data.type)||'analysis',
+        status:data.status||'not_started',priority:data.priority||data.prio||'medium',
+        date:data.date||null,time:data.time||null,
+        durationMinutes:data.durationMinutes||data.duration||60,
+        plannedMinutes:data.plannedMinutes||null,locked:!!data.locked,desc:data.desc||''
+      },A.editTaskV3Id);
+      closeTv3Modal();if(A.tab==='gantt')rGantt();if(A.tab==='tasks')rTasks();return;
+    }
+    // Fallback: tenta taskV3 (legado)
     let idx = A.taskV3.findIndex(x=>x.id===A.editTaskV3Id);
     if(idx>-1){
       const prev = A.taskV3[idx];
+      if((prev.date!==data.date||prev.time!==data.time)&&prev.date&&data.date){
+        logReschedule(prev.id,prev.title,prev.date,prev.time||'',data.date,data.time||'','modal');
+      }
       // Fase 2: registrar remarcação se data/hora mudaram
       if((prev.date!==data.date||prev.time!==data.time)&&prev.date&&data.date){
         logReschedule(prev.id,prev.title,prev.date,prev.time||'',data.date,data.time||'','modal');
@@ -1798,16 +1851,23 @@ function saveTaskV3(){
     }
     detectConflicts(data.date||'');
   } else {
-    // Criação: sempre vai para A.taskV3
-    const t = Object.assign({
-      id:uid(),template:false,_overrideRoutine:null,_rid:null,
-      _doneByDate:{},createdAt:now,actualMinutes:null
-    }, data);
-    A.taskV3.push(t);
-    snapshot('create');
-    detectConflicts(data.date||'');
+    // V1: criação sempre vai para A.activities
+    var clientId=data.clientId||data.client||'core';
+    saveActivity({
+      title:    data.title,
+      clientId: clientId,
+      projectId:data.projectId||null,
+      type:     mapLegacyType(data.type)||'analysis',
+      status:   data.status||'not_started',
+      priority: data.priority||data.prio||'medium',
+      date:     data.date||null,
+      time:     data.time||null,
+      durationMinutes:data.durationMinutes||data.duration||60,
+      plannedMinutes: data.plannedMinutes||null,
+      locked:   !!data.locked,
+      desc:     data.desc||''
+    },null);
   }
-  save();
   closeTv3Modal();
   if(A.tab==='gantt')rGantt();
   if(A.tab==='tasks')rTasks();

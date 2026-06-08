@@ -450,6 +450,8 @@ const A={
   log:JSON.parse(localStorage.getItem('coreLog')||'{"entries":[]}'),
   backup:JSON.parse(localStorage.getItem('coreBackup')||'{"snapshots":[]}'),
   reschedules:JSON.parse(localStorage.getItem('coreReschedules')||'[]'),
+  taskV3:JSON.parse(localStorage.getItem('coreTaskV3')||'[]'),
+  schemaVersion:parseInt(localStorage.getItem('coreSchemaV')||'0',10),
   cli:{},types:{routine:true,event:true},
   mon:monday(new Date()),tab:'gantt',
   editEvId:null,editTaskId:null,editCliId:null,taskFilter:'all',
@@ -493,6 +495,8 @@ function save(){
     localStorage.setItem('coreLog',JSON.stringify(A.log));
     localStorage.setItem('coreBackup',JSON.stringify(A.backup));
     localStorage.setItem('coreReschedules',JSON.stringify(A.reschedules));
+    localStorage.setItem('coreTaskV3',JSON.stringify(A.taskV3));
+    localStorage.setItem('coreSchemaV',String(A.schemaVersion));
   }catch(e){
     console.error('❌ Erro ao salvar:',e.message);
     logChange('save_error','system','storage',e.message);
@@ -543,7 +547,12 @@ function rGantt(){
   const totH=(EH-SH)*HP;
   for(let h=SH;h<=EH;h++){const s=document.createElement('div');s.className='wv-tslot'+(h%2===0?' maj':'');s.style.height=HP+'px';s.textContent=h<EH?pad(h)+':00':'';TC.appendChild(s)}
   const today=fiso(new Date()),wS=new Date(A.mon),wE=new Date(A.mon);wE.setDate(wE.getDate()+6);
+  // FASE 3: Agenda consome taskV3 como fonte primária
+  // Legado (A.events via weekR + expRecur) mantido enquanto schemaVersion < 3
+  const v3Sched=tasksForWeek(A.mon);
   const rtEvs=weekR(A.mon),userEvs=expRecur(A.events,wS,wE),conflicts=[];
+  // allEvs unificado: taskV3 com data+hora + legado (sem duplicatas)
+  const v3Ids=new Set(v3Sched.map(t=>t.id));
   for(let i=A.dayOffset;i<A.dayOffset+vis;i++){
     const d=new Date(A.mon);d.setDate(d.getDate()+i);
     const ds=fiso(d),dow=d.getDay(),isBlk=BLOCKED.includes(dow),isWknd=dow===0||dow===6,isTod=ds===today;
@@ -563,9 +572,11 @@ function rGantt(){
     if(isBlk){const b=document.createElement('div');b.className='wv-blkl';b.innerHTML='<span>VIER · CRICÍUMA</span>';col.appendChild(b)}
     // Eventos: rotinas com override suprimidas
     const overridden=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine));
-    const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!overridden.has(e.id)):[];
-    const dayUsr=A.types.event?userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!e.isRoutine):[];
-    const allEvs=[...dayRt,...dayUsr].sort((a,b)=>timeToMins(a.time)-timeToMins(b.time));
+    const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!overridden.has(e.id)&&!v3Ids.has(e.id)):[];
+    const dayUsr=A.types.event?userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!e.isRoutine&&!v3Ids.has(e.id)):[];
+    // FASE 3: tasks v3 com horário para este dia
+    const dayV3=v3Sched.filter(t=>t.date===ds&&(A.cli[t.clientId]||A.cli[t.client]||true));
+    const allEvs=[...dayRt,...dayUsr,...dayV3].sort((a,b)=>timeToMins(a.time)-timeToMins(b.time));
     // FASE 2: Detecção de conflitos por intervalo (não apenas horário exato de início)
     // Analisa eventos + rotinas + overrides — todo compromisso que ocupa horário
     for(let ai=0;ai<allEvs.length;ai++){
@@ -588,22 +599,45 @@ function rGantt(){
         const sm=timeToMins(ge.time),em=sm+(ge.duration||60);
         const tp=minsToY(sm),hp2=Math.max(minsToY(em)-tp,22);
         const cw=Math.floor(100/gc),cl=gi*cw;
-        const dk=ge.id+'_'+ds,isDone=!!A.done[dk];
-        const cli=cliById(ge.client);
+        const dk=ge.id+'_'+ds;
+        // FASE 3: suporte a campos v3 (clientId) e legado (client)
+        const geClientId=ge.clientId||ge.client||'';
+        const geIsTemplate=ge.template!==undefined?ge.template:!!ge.isRoutine;
+        const isDone=ge._doneByDate?!!ge._doneByDate[ds]:!!A.done[dk];
+        const cli=cliById(geClientId);
         const isLocked=!!ge.locked,isSel=A.selSet.has(ge.id);
         const el=document.createElement('div');
-        el.className='gevt '+ge.client+'-ev'+(ge.isRoutine?' routine-ev':'')+(isDone?' done-ev':'')+(isLocked?' locked-ev':'')+(isSel?' selected-ev':'');
+        el.className='gevt '+geClientId+'-ev'+(geIsTemplate?' routine-ev':'')+(isDone?' done-ev':'')+(isLocked?' locked-ev':'')+(isSel?' selected-ev':'');
         el.style.cssText='top:'+tp+'px;height:'+hp2+'px;left:calc('+cl+'% + 2px);width:calc('+cw+'% - 4px);border-left-color:'+cli.color;
-        // Conteúdo: sem template literal
         const descEl=ge.desc?'<div class="esub">'+ge.desc+'</div>':'';
-        // Ações: checkbox sempre, delete só em não-rotina
-        const actHtml='<div class="ev-actions">'+(ge.isRoutine?'':'<button class="ev-del" title="Apagar">×</button>')+'<input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>';
+        const actHtml='<div class="ev-actions">'+(geIsTemplate?'':'<button class="ev-del" title="Apagar">×</button>')+'<input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>';
         el.innerHTML='<div class="etime">'+ge.time+(ge.duration?' · '+ge.duration+'m':'')+'</div><div class="etitle">'+ge.title+'</div>'+descEl+actHtml;
-        // Checkbox done
-        el.querySelector('.ev-cb').addEventListener('change',function(ev2){ev2.stopPropagation();A.done[dk]=ev2.target.checked;save();el.classList.toggle('done-ev',ev2.target.checked)});
-        // Botão delete
+        // Checkbox done — v3 usa _doneByDate, legado usa A.done
+        el.querySelector('.ev-cb').addEventListener('change',function(ev2){
+          ev2.stopPropagation();
+          if(ge._doneByDate!==undefined){
+            // task v3
+            const idx3=A.taskV3.findIndex(x=>x.id===ge.id);
+            if(idx3>-1){A.taskV3[idx3]._doneByDate=A.taskV3[idx3]._doneByDate||{};A.taskV3[idx3]._doneByDate[ds]=ev2.target.checked;}
+          } else {
+            A.done[dk]=ev2.target.checked;
+          }
+          save();el.classList.toggle('done-ev',ev2.target.checked);
+        });
+        // Botão delete — v3 remove de taskV3, legado remove de A.events
         const delBtn=el.querySelector('.ev-del');
-        if(delBtn)delBtn.addEventListener('click',function(ev2){ev2.stopPropagation();if(!confirm('Apagar "'+ge.title+'"?'))return;softDelete('event',ge.id,ge);A.events=A.events.filter(x=>x.id!==ge.id);snapshot('delete');save();rGantt()});
+        if(delBtn)delBtn.addEventListener('click',function(ev2){
+          ev2.stopPropagation();if(!confirm('Apagar "'+ge.title+'"?'))return;
+          if(ge._doneByDate!==undefined){
+            // task v3
+            softDelete('task',ge.id,ge);
+            A.taskV3=A.taskV3.filter(x=>x.id!==ge.id);
+          } else {
+            softDelete('event',ge.id,ge);
+            A.events=A.events.filter(x=>x.id!==ge.id);
+          }
+          snapshot('delete');save();rGantt();
+        });
         // Ctrl+click = seleção múltipla
         el.addEventListener('click',function(ev2){if(ev2.ctrlKey||ev2.metaKey){ev2.stopPropagation();toggleSel(ge.id,el)}});
         // Tooltip
@@ -617,25 +651,30 @@ function rGantt(){
           const now=Date.now();
           if(now-lastTap<380){
             lastTap=0;
-            if(ge.isRoutine){
-              // Override: busca ou cria
+            if(geIsTemplate){
+              // Override: busca ou cria — suporta v3 e legado
               const existing=A.events.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
               if(existing>-1){
                 openEvModal(A.events[existing].id);
               } else {
-                const ov={id:uid(),title:ge.title,date:ds,time:ge.time,duration:ge.duration,client:ge.client,type:'work',desc:ge.notes||'',notes:'',isRoutine:false,locked:false,_overrideRoutine:ge.id};
+                const ov={id:uid(),title:ge.title,date:ds,time:ge.time,duration:ge.duration||ge.durationMinutes,client:geClientId,type:'work',desc:ge.notes||ge.desc||'',notes:'',isRoutine:false,locked:false,_overrideRoutine:ge.id};
                 A.events.push(ov);
                 snapshot('create');
                 save();
                 openEvModal(ov.id);
               }
             } else {
-              openEvModal(ge.id);
+              // task v3 ou evento legado
+              if(ge._doneByDate!==undefined){
+                openTaskV3Modal(ge.id);
+              } else {
+                openEvModal(ge.id);
+              }
             }
           } else {lastTap=now}
         });
-        // Drag só em não-locked e não-rotina
-        if(!ge.isRoutine&&!ge.locked)attachDrag(el,ge,tp,totH);
+        // Drag só em não-template e não-locked
+        if(!geIsTemplate&&!ge.locked)attachDrag(el,ge,tp,totH);
         col.appendChild(el);
       });
     });
@@ -682,20 +721,24 @@ function attachDrag(el,ev,origTop,totH){
     if(moved){
       moved=false;
       const nt=yToTime(parseFloat(el.style.top));
-      const idx=A.events.findIndex(x=>x.id===ev.id);
-      if(idx>-1){
-        const oldTime=A.events[idx].time;
-        const oldDate=A.events[idx].date;
-        // FASE 2: Registrar remarcação ANTES de alterar
-        if(oldTime!==nt){
-          logReschedule(ev.id,ev.title,oldDate,oldTime,oldDate,nt,'drag');
+      // FASE 3: tenta taskV3 primeiro, depois legado
+      const idx3=A.taskV3.findIndex(x=>x.id===ev.id);
+      if(idx3>-1){
+        const oldTime=A.taskV3[idx3].time;
+        const oldDate=A.taskV3[idx3].date;
+        if(oldTime!==nt) logReschedule(ev.id,ev.title,oldDate,oldTime,oldDate,nt,'drag');
+        A.taskV3[idx3].time=nt;
+        A.taskV3[idx3].updatedAt=new Date().toISOString();
+        detectConflicts(oldDate);snapshot('create');save();
+      } else {
+        const idx=A.events.findIndex(x=>x.id===ev.id);
+        if(idx>-1){
+          const oldTime=A.events[idx].time;
+          const oldDate=A.events[idx].date;
+          if(oldTime!==nt) logReschedule(ev.id,ev.title,oldDate,oldTime,oldDate,nt,'drag');
+          A.events[idx].time=nt;
+          detectConflicts(oldDate);snapshot('create');save();
         }
-        // Apenas o evento arrastado é alterado — sem cascata
-        A.events[idx].time=nt;
-        // FASE 2: Detectar conflitos e sinalizar — nunca corrigir
-        detectConflicts(oldDate);
-        snapshot('create');
-        save();
       }
       rGantt();
     }
@@ -785,73 +828,98 @@ function delEv(){
 function rTasks(){
   const list=document.getElementById('tklist');list.innerHTML='';
   const today=fiso(new Date());
-  let tasks=[...A.tasks];
-  if(A.taskFilter==='pending')tasks=tasks.filter(t=>!t.done);
-  else if(A.taskFilter==='today')tasks=tasks.filter(t=>t.due===today&&!t.done);
-  else if(A.taskFilter==='overdue')tasks=tasks.filter(t=>t.due&&t.due<today&&!t.done);
-  else if(A.taskFilter==='done')tasks=tasks.filter(t=>t.done);
-  tasks.sort((a,b)=>{if(a.done!==b.done)return a.done?1:-1;const p={high:0,med:1,low:2};return p[a.prio||'med']-p[b.prio||'med']});
+  // FASE 3: taskV3 é a fonte primária; A.tasks legado exibido como compatibilidade
+  const legacyIds=new Set(A.taskV3.map(t=>t.id));
+  const legacyTasks=A.tasks.filter(t=>!legacyIds.has(t.id));
+  // Normalizar legado para campos v3
+  const normalizedLegacy=legacyTasks.map(t=>Object.assign({
+    clientId:t.client,date:t.due,time:null,durationMinutes:null,
+    status:t.done?'completed':'not_started',
+    priority:t.prio==='med'?'medium':t.prio||'medium',
+    template:false,isDelivery:false,deliveryType:null,
+    plannedMinutes:null,actualMinutes:null,
+    _doneByDate:{},createdAt:null,updatedAt:null,completedAt:null,
+    modality:null
+  },t));
+  let tasks=[...A.taskV3,...normalizedLegacy];
+  if(A.taskFilter==='pending')tasks=tasks.filter(t=>t.status!=='completed'&&t.status!=='cancelled');
+  else if(A.taskFilter==='today')tasks=tasks.filter(t=>(t.date||t.due)===today&&t.status!=='completed');
+  else if(A.taskFilter==='overdue'){const d=today;tasks=tasks.filter(t=>(t.date||t.due)&&(t.date||t.due)<d&&t.status!=='completed');}
+  else if(A.taskFilter==='done')tasks=tasks.filter(t=>t.status==='completed');
+  const prioOrder={critical:0,high:1,medium:2,low:3,med:2,high_legacy:1};
+  tasks.sort((a,b)=>{
+    const ad=a.status==='completed'?1:0,bd=b.status==='completed'?1:0;
+    if(ad!==bd)return ad-bd;
+    return (prioOrder[a.priority||a.prio||'medium']||2)-(prioOrder[b.priority||b.prio||'medium']||2);
+  });
   if(!tasks.length){const e=document.createElement('div');e.style.cssText='text-align:center;padding:40px;color:var(--g400);font-size:13px';e.textContent='Nenhuma tarefa.';list.appendChild(e);return}
-  const pm={high:'Alta',med:'Média',low:'Baixa'};
-  const tm={task:'Tarefa',call:'Ligação',charge:'Cobrança',doc:'Documento',meeting:'Reunião'};
-  // Cores semânticas por tipo
-  const typeColor={task:'var(--b600)',call:'var(--s600)',charge:'var(--d600)',doc:'var(--g500)',meeting:'var(--a500)'};
-  const typeBg={task:'var(--b100)',call:'var(--s100)',charge:'var(--d100)',doc:'var(--m100)',meeting:'var(--a100)'};
+  // Labels e cores — suporta schema v3 e legado
+  const pm={critical:'Crítica',high:'Alta',medium:'Média',med:'Média',low:'Baixa'};
+  const typeColor={task:'var(--b600)',call:'var(--s600)',charge:'var(--d600)',doc:'var(--g500)',meeting:'var(--a500)',coord_tecnica:'var(--b600)',comercial:'var(--a500)',financeiro:'var(--d600)',administrativo:'var(--g500)'};
+  const typeBg={task:'var(--b100)',call:'var(--s100)',charge:'var(--d100)',doc:'var(--m100)',meeting:'var(--a100)',coord_tecnica:'var(--b100)',comercial:'var(--a100)',financeiro:'var(--d100)',administrativo:'var(--m100)'};
+  const tm={task:'Tarefa',call:'Ligação',charge:'Cobrança',doc:'Documento',meeting:'Reunião',coord_tecnica:'Coord. Técnica',planejamento:'Planejamento',comercial:'Comercial',financeiro:'Financeiro',marketing:'Marketing',administrativo:'Administrativo',estrategico:'Estratégico'};
   tasks.forEach(function(t){
-    const cli=cliById(t.client);
-    const isOv=t.due&&t.due<today&&!t.done,isTod=t.due===today&&!t.done;
+    const isDone=t.status==='completed';
+    const cid=t.clientId||t.client||'';
+    const cli=cliById(cid);
+    const tdate=t.date||t.due||null;
+    const isOv=tdate&&tdate<today&&!isDone,isTod=tdate===today&&!isDone;
     const card=document.createElement('div');
-    card.className='tkcard'+(t.done?' done-task':'');
-    // Borda esquerda colorida pelo cliente
+    card.className='tkcard'+(isDone?' done-task':'');
     card.style.borderLeft='3px solid '+cli.color;
-    // Linha 1: checkbox
-    const chk=document.createElement('input');chk.type='checkbox';chk.className='tkchk';if(t.done)chk.checked=true;
+    const chk=document.createElement('input');chk.type='checkbox';chk.className='tkchk';if(isDone)chk.checked=true;
     chk.addEventListener('change',function(){doneTask(t.id)});
     card.appendChild(chk);
-    // Corpo clicável
     const body=document.createElement('div');body.className='tkbody';
-    body.addEventListener('click',function(){openTaskModal(t.id)});
-    // Título
+    body.addEventListener('click',function(){t._doneByDate!==undefined?openTaskV3Modal(t.id):openTaskModal(t.id)});
     const ttl=document.createElement('div');ttl.className='tktitle';ttl.textContent=t.title;body.appendChild(ttl);
-    // Meta row
     const meta=document.createElement('div');meta.className='tkmeta';
-    // Badge cliente
     const cliSpan=document.createElement('span');cliSpan.className='tkcli';
     cliSpan.style.background=cli.color+'22';cliSpan.style.color=cli.color;
     cliSpan.textContent=cli.name.split(' ')[0];meta.appendChild(cliSpan);
-    // Badge tipo com cor semântica
-    if(t.type){const tSpan=document.createElement('span');tSpan.className='tktype';
-      tSpan.style.background=typeBg[t.type]||'var(--m100)';tSpan.style.color=typeColor[t.type]||'var(--g500)';
-      tSpan.textContent=tm[t.type]||t.type;meta.appendChild(tSpan);}
-    // Badge prioridade
-    const prioSpan=document.createElement('span');prioSpan.className='tkprio p'+((t.prio||'m')[0]);prioSpan.textContent=pm[t.prio||'med'];meta.appendChild(prioSpan);
-    // Prazo
-    if(t.due){const dueSpan=document.createElement('span');dueSpan.className='tkdue'+(isOv?' ov':isTod?' tod':'');dueSpan.textContent=(isOv?'⚠ Atrasado · ':(isTod?'Hoje · ':'')+ffull(t.due));meta.appendChild(dueSpan);}
-    body.appendChild(meta);
-    // Recorrência badge
+    const ttype=t.type||'';
+    if(ttype){const tSpan=document.createElement('span');tSpan.className='tktype';
+      tSpan.style.background=typeBg[ttype]||'var(--m100)';tSpan.style.color=typeColor[ttype]||'var(--g500)';
+      tSpan.textContent=tm[ttype]||ttype;meta.appendChild(tSpan);}
+    const tprio=t.priority||t.prio||'medium';
+    const prioSpan=document.createElement('span');prioSpan.className='tkprio p'+(tprio[0]);prioSpan.textContent=pm[tprio]||tprio;meta.appendChild(prioSpan);
+    if(tdate){const dueSpan=document.createElement('span');dueSpan.className='tkdue'+(isOv?' ov':isTod?' tod':'');dueSpan.textContent=(isOv?'⚠ Atrasado · ':(isTod?'Hoje · ':'')+ffull(tdate));meta.appendChild(dueSpan);}
     if(t.recur){const rSpan=document.createElement('span');rSpan.style.cssText='font-size:9px;color:var(--b600);background:var(--b100);padding:2px 6px;border-radius:999px;font-weight:600';rSpan.textContent='↻ '+({weekly:'semanal',biweekly:'quinzenal',monthly:'mensal',daily:'diário'}[t.recur.freq]||t.recur.freq);meta.appendChild(rSpan);}
-    // Descrição
+    if(t.isDelivery){const dSpan=document.createElement('span');dSpan.style.cssText='font-size:9px;color:var(--s600);background:var(--s100);padding:2px 6px;border-radius:999px;font-weight:600';dSpan.textContent='⚑ Entrega';meta.appendChild(dSpan);}
+    body.appendChild(meta);
     if(t.desc){const desc=document.createElement('div');desc.style.cssText='font-size:11px;color:var(--g500);margin-top:4px';desc.textContent=t.desc;body.appendChild(desc);}
     card.appendChild(body);
-    // Botão deletar
-    const del=document.createElement('button');del.className='tkdel';del.textContent='×';del.title='Deletar tarefa';
+    const del=document.createElement('button');del.className='tkdel';del.textContent='×';del.title='Deletar';
     del.addEventListener('click',function(e){e.stopPropagation();delTask(t.id)});
     card.appendChild(del);
     list.appendChild(card);
   });
 }
 function fTask(f,btn){A.taskFilter=f;document.querySelectorAll('.tfbtn').forEach(function(b){b.classList.remove('on')});btn.classList.add('on');rTasks()}
-function doneTask(id){const t=A.tasks.find(x=>x.id===id);if(t){t.done=!t.done;save();rTasks()}}
+function doneTask(id){
+  // FASE 3: tenta taskV3 primeiro
+  const t3=A.taskV3.find(x=>x.id===id);
+  if(t3){
+    const isDone=t3.status!=='completed';
+    t3.status=isDone?'completed':'not_started';
+    t3.done=isDone;
+    t3.completedAt=isDone?new Date().toISOString():null;
+    t3.updatedAt=new Date().toISOString();
+    save();rTasks();return;
+  }
+  const t=A.tasks.find(x=>x.id===id);if(t){t.done=!t.done;save();rTasks();}
+}
 function delTask(id){
   if(confirm('Deletar?')){
+    // FASE 3: tenta taskV3 primeiro
+    const t3=A.taskV3.find(x=>x.id===id);
+    if(t3){softDelete('task',id,t3);A.taskV3=A.taskV3.filter(x=>x.id!==id);snapshot('delete');save();rTasks();return;}
     const task=A.tasks.find(x=>x.id===id);
     if(task){
       softDelete('task',id,task);
       A.tasks=A.tasks.filter(x=>x.id!==id);
       A.events=A.events.filter(x=>x._taskId!==id);
-      snapshot('delete');
-      save();
-      rTasks();
+      snapshot('delete');save();rTasks();
     }
   }
 }
@@ -884,15 +952,14 @@ function saveTask(){
 }
 function delEditTask(){
   if(A.editTaskId&&confirm('Deletar?')){
+    const t3=A.taskV3.find(x=>x.id===A.editTaskId);
+    if(t3){softDelete('task',A.editTaskId,t3);A.taskV3=A.taskV3.filter(x=>x.id!==A.editTaskId);snapshot('delete');save();closeTaskModal();rTasks();return;}
     const task=A.tasks.find(x=>x.id===A.editTaskId);
     if(task){
       softDelete('task',A.editTaskId,task);
       A.tasks=A.tasks.filter(x=>x.id!==A.editTaskId);
       A.events=A.events.filter(x=>x._taskId!==A.editTaskId);
-      snapshot('delete');
-      save();
-      closeTaskModal();
-      rTasks();
+      snapshot('delete');save();closeTaskModal();rTasks();
     }
   }
 }
@@ -901,16 +968,29 @@ function delEditTask(){
 function rDash(){
   const w=document.getElementById('dwrap');w.innerHTML='';
   const wS=new Date(A.mon),wE=new Date(A.mon);wE.setDate(wE.getDate()+6);
-  const rtEvs=weekR(A.mon),userEvs=expRecur(A.events,wS,wE),allEvs=[...rtEvs,...userEvs];
-  const hpc={};A.clients.forEach(c=>{hpc[c.id]=0});allEvs.forEach(e=>{if(e.client in hpc)hpc[e.client]+=(e.duration||60)/60});
+  // FASE 3: dashboard combina taskV3 agenda + legado
+  const rtEvs=weekR(A.mon),userEvs=expRecur(A.events,wS,wE);
+  const v3Week=tasksForWeek(A.mon);
+  const v3Ids=new Set(v3Week.map(t=>t.id));
+  const allEvs=[...rtEvs,...userEvs.filter(e=>!v3Ids.has(e.id)),...v3Week];
+  const hpc={};A.clients.forEach(c=>{hpc[c.id]=0});
+  allEvs.forEach(e=>{const cid=e.clientId||e.client||'';if(cid in hpc)hpc[cid]+=(e.duration||e.durationMinutes||60)/60});
   const totalH=Object.values(hpc).reduce(function(a,b){return a+b},0)||1;
   const wSs=fiso(wS),wEs=fiso(wE);
-  const doneEvs=allEvs.filter(e=>{const k=e.id+'_'+e.date;return A.done[k]&&e.date>=wSs&&e.date<=wEs});
+  const doneEvs=allEvs.filter(e=>{
+    if(e._doneByDate!==undefined)return !!e._doneByDate[e.date];
+    const k=e.id+'_'+e.date;return A.done[k]&&e.date>=wSs&&e.date<=wEs;
+  });
   const pctDone=allEvs.length?Math.round(doneEvs.length/allEvs.length*100):0;
-  const rtDone=A.routines.filter(r=>r.done).length,rtPct=A.routines.length?Math.round(rtDone/A.routines.length*100):0;
+  const v3Templates=A.taskV3.filter(t=>t.template);
+  const rtDone=A.routines.filter(r=>r.done).length+v3Templates.filter(t=>t.status==='completed').length;
+  const rtTotal=A.routines.length+v3Templates.length||1;
+  const rtPct=Math.round(rtDone/rtTotal*100);
   const today=fiso(new Date());
-  const tPend=A.tasks.filter(t=>!t.done).length,tOv=A.tasks.filter(t=>!t.done&&t.due&&t.due<today).length;
-  let streak=0;for(let i=0;i<30;i++){const d=new Date();d.setDate(d.getDate()-i);if(Object.keys(A.done).some(k=>k.endsWith('_'+fiso(d))&&A.done[k]))streak++;else break}
+  const allPending=[...A.taskV3.filter(t=>t.status!=='completed'&&t.status!=='cancelled'),...A.tasks.filter(t=>!t.done)];
+  const tPend=allPending.length;
+  const tOv=allPending.filter(t=>{const d=t.date||t.due;return d&&d<today}).length;
+  let streak=0;for(let i=0;i<30;i++){const d=new Date();d.setDate(d.getDate()-i);const ds=fiso(d);const hasDoneV3=A.taskV3.some(t=>t._doneByDate&&t._doneByDate[ds]);const hasDoneLeg=Object.keys(A.done).some(k=>k.endsWith('_'+ds)&&A.done[k]);if(hasDoneV3||hasDoneLeg)streak++;else break}
   const kg=document.createElement('div');kg.className='dgrid';
   [{l:'Horas planejadas',v:Math.round(totalH)+'h',s:'semana atual'},{l:'Atividades concluídas',v:pctDone+'%',s:doneEvs.length+' de '+allEvs.length,c:pctDone>=70?'pos':'warn'},{l:'Tarefas pendentes',v:tPend,s:tOv?'⚠ '+tOv+' atrasadas':'Em dia',c:tOv?'warn':'pos'},{l:'Rotinas executadas',v:rtPct+'%',s:rtDone+' de '+A.routines.length,c:rtPct>=80?'pos':'warn'}].forEach(function(k){const card=document.createElement('div');card.className='kpi';card.innerHTML='<div class="klbl">'+k.l+'</div><div class="kval '+(k.c||'')+'">'+k.v+'</div><div class="ksub">'+k.s+'</div>';kg.appendChild(card)});
   w.appendChild(kg);
@@ -981,7 +1061,11 @@ function delCli(id){const c=A.clients.find(x=>x.id===id);if(c&&confirm('Remover 
 // CALENDÁRIO ANUAL
 function rYear(){
   const g=document.getElementById('ycal');g.innerHTML='';
-  const ts=fiso(new Date()),td=new Set(A.tasks.filter(t=>!t.done&&t.due).map(t=>t.due));
+  const ts=fiso(new Date());
+  // FASE 3: inclui taskV3 com date + legado
+  const tdV3=new Set(A.taskV3.filter(t=>t.date&&t.status!=='completed').map(t=>t.date));
+  const tdLeg=new Set(A.tasks.filter(t=>!t.done&&t.due).map(t=>t.due));
+  const td=new Set([...tdV3,...tdLeg]);
   for(let m=5;m<17;m++){
     const yr=m<12?2026:2027,mo=m<12?m:m-12;
     const card=document.createElement('div');card.className='mcrd';
@@ -1025,7 +1109,206 @@ function unlockSelected(){A.events.forEach(x=>{if(A.selSet.has(x.id))x.locked=fa
 document.getElementById('eT').addEventListener('keydown',function(e){if(e.key==='Enter')saveEv()});
 document.getElementById('tTitle').addEventListener('keydown',function(e){if(e.key==='Enter')saveTask()});
 
-function exportJSON(){const blob=new Blob([JSON.stringify({events:A.events,tasks:A.tasks,routines:A.routines,clients:A.clients},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
+function exportJSON(){const blob=new Blob([JSON.stringify({taskV3:A.taskV3,events:A.events,tasks:A.tasks,routines:A.routines,clients:A.clients,schemaVersion:A.schemaVersion},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
+
+// ============================================================
+// FASE 3: MODELO ÚNICO DE TASK
+// ============================================================
+
+// Tabela de conversão de type legado → {type, modality}
+const TYPE_MAP={
+  meeting:{type:'coord_tecnica',modality:'reuniao'},
+  online:{type:'coord_tecnica',modality:'online'},
+  work:{type:'coord_tecnica',modality:'producao'},
+  deadline:{type:'coord_tecnica',modality:'entrega'},
+  task:{type:'administrativo',modality:null},
+  call:{type:'comercial',modality:'ligacao'},
+  charge:{type:'financeiro',modality:null},
+  doc:{type:'coord_tecnica',modality:'producao'},
+  routine:{type:'administrativo',modality:null}
+};
+
+// Converter prio legado → v3
+function migratePrio(p){return p==='med'?'medium':p==='high'?'high':p==='low'?'low':'medium'}
+
+// Converter um event legado → task v3
+function eventToTaskV3(ev,done){
+  const now=new Date().toISOString();
+  const tmap=TYPE_MAP[ev.type]||{type:'coord_tecnica',modality:null};
+  return {
+    id:ev.id, title:ev.title,
+    type:tmap.type, modality:tmap.modality,
+    status:done?'completed':'not_started',
+    priority:'medium', prio:'medium',
+    clientId:ev.client||null, client:ev.client||null,
+    date:ev.date||null, time:ev.time||null,
+    durationMinutes:ev.duration||null, duration:ev.duration||null,
+    plannedMinutes:null, actualMinutes:null,
+    isDelivery:ev.type==='deadline', deliveryType:null,
+    done:!!done, locked:!!ev.locked, template:false,
+    recur:ev.recur||null,
+    desc:ev.desc||'', notes:ev.notes||'',
+    _overrideRoutine:ev._overrideRoutine||null, _rid:null,
+    _doneByDate:{},
+    createdAt:now, updatedAt:now, completedAt:done?now:null
+  };
+}
+
+// Converter um task legado → task v3
+function taskLegToTaskV3(t){
+  const now=new Date().toISOString();
+  const tmap=TYPE_MAP[t.type]||{type:'administrativo',modality:null};
+  return {
+    id:t.id, title:t.title,
+    type:tmap.type, modality:tmap.modality,
+    status:t.done?'completed':'not_started',
+    priority:migratePrio(t.prio), prio:migratePrio(t.prio),
+    clientId:t.client||null, client:t.client||null,
+    date:t.due||null, time:null,
+    durationMinutes:null, duration:null,
+    plannedMinutes:null, actualMinutes:null,
+    isDelivery:t.type==='doc', deliveryType:t.type==='doc'?'documento':null,
+    done:!!t.done, locked:false, template:false,
+    recur:t.recur||null,
+    desc:t.desc||'', notes:t.notes||'',
+    _overrideRoutine:null, _rid:null, _doneByDate:{},
+    createdAt:now, updatedAt:now, completedAt:t.done?now:null
+  };
+}
+
+// Converter uma routine legada → task v3 template
+function routineToTaskV3(r){
+  const now=new Date().toISOString();
+  return {
+    id:r.id, title:r.name||r.title||'',
+    type:'administrativo', modality:null,
+    status:r.done?'completed':'not_started',
+    priority:'medium', prio:'medium',
+    clientId:null, client:null,
+    date:null, time:null, durationMinutes:60, duration:60,
+    plannedMinutes:null, actualMinutes:null,
+    isDelivery:false, deliveryType:null,
+    done:!!r.done, locked:false, template:true,
+    recur:{freq:'weekly',until:null,day:r.day||''},
+    desc:'', notes:'', _overrideRoutine:null, _rid:null,
+    _doneByDate:{},
+    createdAt:now, updatedAt:now, completedAt:null
+  };
+}
+
+// Migração única: events + tasks + routines + done → taskV3
+function migrateToV3(){
+  if(A.schemaVersion>=3){console.log('✅ Schema v3 já aplicado');return;}
+  snapshot('create');
+  logChange('migration','system','v3','Iniciando migração para schema v3');
+  const newTasks=[];
+  const taskIdSet=new Set(A.tasks.map(t=>t.id));
+
+  // Migrar events (exceto eventos _taskId — são duplicatas)
+  A.events.forEach(function(ev){
+    if(ev._taskId)return; // duplicata de task legada
+    const dk=ev.id+'_'+(ev.date||'');
+    const done=A.done[dk]||false;
+    newTasks.push(eventToTaskV3(ev,done));
+  });
+
+  // Migrar routines (hardcoded weekR → agora persistidas)
+  // Migrar A.routines legado
+  A.routines.forEach(function(r){
+    if(!newTasks.find(t=>t.id===r.id)) newTasks.push(routineToTaskV3(r));
+  });
+  // Migrar weekR hardcoded como templates persistidos (apenas se não existir)
+  const wkRSrc=weekR(A.mon);
+  const weekRIds=new Set(wkRSrc.map(e=>e.id));
+  wkRSrc.forEach(function(ev){
+    if(!newTasks.find(t=>t.id===ev.id)){
+      const base=eventToTaskV3(ev,false);
+      base.template=true;
+      base.date=null; // template não tem data fixa
+      base.recur={freq:'weekly',until:null,day:['segunda','terça','quarta','quinta','sexta','sábado'][new Date(ev.date).getDay()-1]||''};
+      newTasks.push(base);
+    }
+  });
+
+  // Migrar tasks legadas
+  A.tasks.forEach(function(t){
+    if(!newTasks.find(v=>v.id===t.id)) newTasks.push(taskLegToTaskV3(t));
+  });
+
+  // Deduplicar por ID
+  const seen=new Set();
+  const dedupedTasks=newTasks.filter(t=>{if(seen.has(t.id))return false;seen.add(t.id);return true;});
+
+  A.taskV3=dedupedTasks;
+  A.schemaVersion=3;
+  save();
+  logChange('migration','system','v3','Migração concluída: '+dedupedTasks.length+' tasks v3 criadas');
+  console.log('✅ Migração v3 concluída:',dedupedTasks.length,'tasks');
+}
+
+// Expandir tasks v3 recorrentes para uma semana
+function expRecurV3(tasks,wS,wE){
+  const out=[];
+  tasks.forEach(function(t){
+    if(!t.time)return; // só tasks com horário aparecem na agenda
+    if(!t.recur){
+      if(t.date){const td=new Date(t.date+'T00:00:00');if(td>=wS&&td<=wE)out.push(Object.assign({},t,{_rid:null}));}
+      return;
+    }
+    const dayNames=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+    const targetDay=t.recur.day?dayNames.indexOf(t.recur.day):-1;
+    const until=t.recur.until?new Date(t.recur.until+'T00:00:00'):wE;
+    let cur=new Date(wS);
+    while(cur<=wE&&cur<=until){
+      const dow=cur.getDay();
+      let add=false;
+      if(t.recur.freq==='daily')add=true;
+      else if(t.recur.freq==='weekly'&&targetDay>=0)add=dow===targetDay;
+      else if(t.recur.freq==='biweekly'&&targetDay>=0)add=dow===targetDay; // simplificado
+      else if(t.recur.freq==='monthly')add=true; // simplificado
+      if(add){
+        const ds=fiso(cur);
+        const isDoneInst=!!(t._doneByDate&&t._doneByDate[ds]);
+        out.push(Object.assign({},t,{date:ds,_rid:t.id,done:isDoneInst,_doneByDate:t._doneByDate||{}}));
+      }
+      cur.setDate(cur.getDate()+1);
+    }
+  });
+  return out;
+}
+
+// Retornar tasks v3 com horário para a semana de 'mon'
+function tasksForWeek(mon){
+  const wS=new Date(mon),wE=new Date(mon);wE.setDate(wE.getDate()+6);
+  // Incluir overrides: tasks v3 não-template com _overrideRoutine
+  const overriddenIds=new Set(A.taskV3.filter(t=>t._overrideRoutine&&t.date).map(t=>t._overrideRoutine));
+  const templates=A.taskV3.filter(t=>t.template&&!overriddenIds.has(t.id));
+  const nonTemplates=A.taskV3.filter(t=>!t.template&&t.date&&t.time);
+  const expanded=expRecurV3(templates,wS,wE);
+  return [...expanded,...nonTemplates.filter(t=>{const td=new Date(t.date+'T00:00:00');return td>=wS&&td<=wE;})];
+}
+
+// Modal simples para editar task v3 (reutiliza modal de evento legado)
+function openTaskV3Modal(id){
+  const t=A.taskV3.find(x=>x.id===id);
+  if(!t)return;
+  // Popula campos do modal de evento legado com dados v3
+  A.editEvId=id;
+  buildSel('eCli');
+  document.getElementById('evMttl').textContent='Editar task';
+  document.getElementById('evDelBtn').style.display='block';
+  document.getElementById('recurSec').style.display='none';
+  document.getElementById('eT').value=t.title;
+  document.getElementById('eD').value=t.date||'';
+  document.getElementById('eH').value=t.time||'09:00';
+  document.getElementById('eDur').value=t.durationMinutes||t.duration||60;
+  document.getElementById('eCli').value=t.clientId||t.client||'';
+  document.getElementById('eTp').value='work';
+  document.getElementById('eDesc').value=t.desc||'';
+  document.getElementById('eLocked').checked=!!t.locked;
+  document.getElementById('evModal').classList.add('open');
+  setTimeout(function(){document.getElementById('eT').focus()},160);
+}
 
 // ============================================================
 // FASE 2: AGENDA FUNCIONAL
@@ -1058,7 +1341,10 @@ function detectConflicts(date){
   const overridden=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===date).map(x=>x._overrideRoutine));
   const dayRt=rtEvs.filter(e=>e.date===date&&!overridden.has(e.id));
   const dayUsr=userEvs.filter(e=>e.date===date&&!e.isRoutine);
-  const all=[...dayRt,...dayUsr];
+  // FASE 3: incluir taskV3 com horário na data
+  const dayV3=tasksForWeek(A.mon).filter(t=>t.date===date);
+  const v3Ids=new Set(dayV3.map(t=>t.id));
+  const all=[...dayRt.filter(e=>!v3Ids.has(e.id)),...dayUsr.filter(e=>!v3Ids.has(e.id)),...dayV3];
   const found=[];
   for(let ai=0;ai<all.length;ai++){
     for(let bi=ai+1;bi<all.length;bi++){
@@ -1115,6 +1401,7 @@ function restore(type,id){
   switch(type){
     case'event':A.events.push(restored);break;
     case'task':A.tasks.push(restored);break;
+    case'taskV3':A.taskV3.push(restored);break;
     case'client':A.clients.push(restored);break;
     case'routine':A.routines.push(restored);break;
   }
@@ -1134,6 +1421,7 @@ function snapshot(action){
     data:{
       events:A.events.map(e=>Object.assign({},e)),
       tasks:A.tasks.map(t=>Object.assign({},t)),
+      taskV3:A.taskV3.map(t=>Object.assign({},t)),
       clients:A.clients.map(c=>Object.assign({},c)),
       routines:A.routines.map(r=>Object.assign({},r)),
       done:Object.assign({},A.done),
@@ -1160,16 +1448,20 @@ function logChange(action,entity,id,details){
 // Validar integridade
 function validateConsistency(){
   const issues=[];
-  // Eventos órfãos
+  // Legado: Eventos órfãos
   A.events.forEach(ev=>{if(ev.client&&!A.clients.find(c=>c.id===ev.client))issues.push('EVENT: '+ev.id+' referencia cliente inexistente ('+ev.client+')')});
-  // Tarefas órfãs
+  // Legado: Tarefas órfãs
   A.tasks.forEach(t=>{if(t.client&&!A.clients.find(c=>c.id===t.client))issues.push('TASK: '+t.id+' referencia cliente inexistente ('+t.client+')')});
-  // Eventos referenciando tarefas deletadas
+  // Legado: Eventos referenciando tarefas deletadas
   A.events.forEach(ev=>{if(ev._taskId&&!A.tasks.find(t=>t.id===ev._taskId))issues.push('EVENT: '+ev.id+' referencia tarefa deletada ('+ev._taskId+')')});
-  // Done registry
+  // Legado: Done registry
   Object.keys(A.done).forEach(key=>{const id=key.split('_')[0];if(id!=='rt'&&!A.events.find(e=>e.id===id)&&!A.tasks.find(t=>t.id===id))issues.push('DONE: '+key+' referencia entidade deletada')});
-  // IDs duplicados
+  // Legado: IDs duplicados
   const eventIds=new Set();A.events.forEach(ev=>{if(eventIds.has(ev.id))issues.push('EVENT: ID duplicado ('+ev.id+')');eventIds.add(ev.id)});
+  // FASE 3: taskV3 órfãs (clientId inexistente)
+  A.taskV3.forEach(t=>{if(t.clientId&&!A.clients.find(c=>c.id===t.clientId))issues.push('TASKV3: '+t.id+' referencia cliente inexistente ('+t.clientId+')')});
+  // FASE 3: IDs duplicados em taskV3
+  const v3Ids=new Set();A.taskV3.forEach(t=>{if(v3Ids.has(t.id))issues.push('TASKV3: ID duplicado ('+t.id+')');v3Ids.add(t.id)});
   if(issues.length>0){
     console.error('❌ INTEGRIDADE COMPROMETIDA:');
     issues.forEach(issue=>console.error('   '+issue));
@@ -1183,6 +1475,8 @@ function validateConsistency(){
 
 document.getElementById('hdate').textContent=ffull(new Date());
 initFilters();buildSel('eCli');buildSel('tCli');
+// FASE 3: migrar dados para modelo único se necessário
+migrateToV3();
 // Validação inicial
 validateConsistency();
 rGantt();

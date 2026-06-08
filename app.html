@@ -89,6 +89,8 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 .wv-day:last-child{border-right:none}
 .wv-day.blk{background:repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(30,90,145,.015) 8px,rgba(30,90,145,.015) 16px)}
 .wv-day.wknd{background:rgba(216,144,43,.015)}
+.wv-lunch{position:absolute;left:0;right:0;background:repeating-linear-gradient(-45deg,rgba(14,17,22,.04),rgba(14,17,22,.04) 4px,transparent 4px,transparent 10px);border-top:1px solid var(--m200);border-bottom:1px solid var(--m200);pointer-events:none;z-index:4;display:flex;align-items:center;justify-content:center}
+.wv-lunch span{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--g400);opacity:.7}
 .wv-hline{position:absolute;left:0;right:0;pointer-events:none}
 .wv-hline.maj{border-top:1px solid var(--m200)}
 .wv-hline.min{border-top:1px solid var(--m100)}
@@ -436,7 +438,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 </div>
 
 <script>
-const SH=7,EH=20,BASE_HPX=60,BLOCKED=[2,4];
+const SH=7,EH=20,BASE_HPX=60,BLOCKED=[2,4],LUNCH_S=12*60,LUNCH_E=13*60;
 const ZOOM_LEVELS=[0.7,0.85,1.0,1.2,1.5,1.8,2.2];
 const COLORS=['#1E5A91','#D8902B','#3A4250','#2F7D5B','#B5392E','#8C5A14','#5C6675','#0B2746'];
 
@@ -509,13 +511,16 @@ function relocateEvent(evId,newTime,visited){
   const ev=A.events[idx];
   if(ev.locked)return;
   ev.time=newTime;
-  const evS=timeToMins(ev.time),evE=evS+(ev.duration||60);
+  let evS=timeToMins(ev.time),evE=evS+(ev.duration||60);
+  // Garantir que o evento não invade o intervalo
+  if(evS<LUNCH_E&&evE>LUNCH_S&&evS>=LUNCH_S){evS=LUNCH_E;ev.time=pad(Math.floor(LUNCH_E/60))+':'+pad(LUNCH_E%60)}
   A.events.forEach(other=>{
     if(other.id===evId||visited.has(other.id)||other.date!==ev.date||other.locked)return;
     const os=timeToMins(other.time),oe=os+(other.duration||60);
     if(evS<oe&&evE>os){
-      const pushH=Math.floor(evE/60),pushM=evE%60;
-      relocateEvent(other.id,pad(Math.min(pushH,EH-1))+':'+pad(pushM),visited);
+      let pushMins=evE;
+      if(pushMins>=LUNCH_S&&pushMins<LUNCH_E)pushMins=LUNCH_E; // pular intervalo
+      relocateEvent(other.id,pad(Math.floor(pushMins/60))+':'+pad(pushMins%60),visited);
     }
   });
 }
@@ -586,6 +591,10 @@ function rGantt(){
     col.style.height=totH+'px';
     col.dataset.date=ds;
     for(let h=SH;h<EH;h++){const l=document.createElement('div');l.className='wv-hline'+(h%2===0?' maj':' min');l.style.top=((h-SH)*HP)+'px';col.appendChild(l)}
+    // Faixa de intervalo 12:00-13:00
+    const lunchDiv=document.createElement('div');lunchDiv.className='wv-lunch';
+    lunchDiv.style.top=minsToY(LUNCH_S)+'px';lunchDiv.style.height=minsToY(LUNCH_E)-minsToY(LUNCH_S)+'px';
+    lunchDiv.innerHTML='<span>intervalo</span>';col.appendChild(lunchDiv);
     if(isTod){const nm=new Date().getHours()*60+new Date().getMinutes();if(nm>=SH*60&&nm<=EH*60){const nl=document.createElement('div');nl.className='wv-nowline';nl.style.top=minsToY(nm)+'px';col.appendChild(nl)}}
     if(isBlk){const b=document.createElement('div');b.className='wv-blkl';b.innerHTML='<span>VIER · CRICÍUMA</span>';col.appendChild(b)}
     // Eventos: rotinas com override suprimidas
@@ -677,6 +686,8 @@ function rGantt(){
     col.addEventListener('click',function(ev2){
       if(ev2.target===col||ev2.target.classList.contains('wv-hline')||ev2.target.classList.contains('wv-blkl')){
         const y=ev2.clientY-col.getBoundingClientRect().top;
+        const clickMins=Math.round((y/hpx()*60+SH*60)/15)*15;
+        if(clickMins>=LUNCH_S&&clickMins<LUNCH_E)return; // bloqueado — intervalo
         document.getElementById('eD').value=ds;
         document.getElementById('eH').value=yToTime(y);
         openEvModal();
@@ -715,7 +726,10 @@ function attachDrag(el,ev,origTop,totH){
     pid=null;el.classList.remove('dragging');
     if(moved){
       moved=false;
-      const nt=yToTime(parseFloat(el.style.top));
+      let nt=yToTime(parseFloat(el.style.top));
+      // Se caiu no intervalo, empurrar para 13:00
+      const ntMins=timeToMins(nt),evEnd=ntMins+(ev.duration||60);
+      if(ntMins<LUNCH_E&&evEnd>LUNCH_S){nt=pad(Math.floor(LUNCH_E/60))+':'+pad(LUNCH_E%60);}
       const idx=A.events.findIndex(x=>x.id===ev.id);
       if(idx>-1){
         A.events[idx].time=nt;
@@ -768,6 +782,9 @@ function togRecur(){
 function saveEv(){
   const t=document.getElementById('eT').value.trim(),d=document.getElementById('eD').value,h=document.getElementById('eH').value;
   if(!t||!d||!h){alert('Preencha título, data e hora.');return}
+  const evStartM=timeToMins(h),evEndM=evStartM+(parseInt(document.getElementById('eDur').value)||60);
+  if(evStartM>=LUNCH_S&&evStartM<LUNCH_E){alert('Horário de intervalo (12:00–13:00) bloqueado.');return}
+  if(evStartM<LUNCH_S&&evEndM>LUNCH_S){alert('O evento invade o intervalo (12:00–13:00). Ajuste a duração ou o horário.');return}
   const data={title:t,date:d,time:h,duration:parseInt(document.getElementById('eDur').value)||60,client:document.getElementById('eCli').value,type:document.getElementById('eTp').value,desc:document.getElementById('eDesc').value.trim(),notes:'',locked:document.getElementById('eLocked').checked};
   if(A.editEvId){
     const idx=A.events.findIndex(x=>x.id===A.editEvId);

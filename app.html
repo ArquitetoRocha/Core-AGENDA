@@ -373,8 +373,13 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
   <div class="mbox">
     <p class="mttl" id="evMttl">Novo evento</p>
     <div class="fg"><label class="fl">Título</label><input class="fi" id="eT" type="text"></div>
-    <div class="frow"><div class="fg"><label class="fl">Data</label><input class="fi" id="eD" type="date"></div><div class="fg"><label class="fl">Hora</label><input class="fi" id="eH" type="time" value="09:00"></div></div>
-    <div class="frow"><div class="fg"><label class="fl">Duração (min)</label><input class="fi" id="eDur" type="number" value="60" min="15" step="15"></div><div class="fg"><label class="fl">Cliente</label><select class="fsel" id="eCli"></select></div></div>
+    <div class="frow"><div class="fg"><label class="fl">Data</label><input class="fi" id="eD" type="date"></div><div class="fg"><label class="fl">Hora</label><input class="fi" id="eH" type="time" value="09:00" oninput="calcEndTime()"></div></div>
+    <div class="frow"><div class="fg"><label class="fl">Duração (min)</label><input class="fi" id="eDur" type="number" value="60" min="15" step="15" oninput="calcEndTime()"></div><div class="fg"><label class="fl">Cliente</label><select class="fsel" id="eCli"></select></div></div>
+    <div style="background:var(--bone);border:1px solid var(--m200);border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <span style="font-family:'Space Grotesk',system-ui;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--g500)">Término previsto</span>
+      <span id="eEndTime" style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--ink)">—</span>
+      <span id="eEndNote" style="font-size:10px;color:var(--a700)"></span>
+    </div>
     <div class="fg"><label class="fl">Tipo</label><select class="fsel" id="eTp"><option value="meeting">Reunião presencial</option><option value="online">Reunião online</option><option value="work">Bloco de trabalho</option><option value="deadline">Prazo / entrega</option></select></div>
     <div class="fg" style="flex-direction:row;align-items:center;gap:8px;background:var(--bone);border:1px solid var(--m200);border-radius:6px;padding:8px 12px;margin-bottom:0">
       <input type="checkbox" id="eLocked" style="accent-color:var(--b600);width:14px;height:14px;cursor:pointer;flex-shrink:0">
@@ -775,9 +780,30 @@ function openEvModal(id,prefill){
     if(prefill&&prefill.client)setTimeout(function(){document.getElementById('eCli').value=prefill.client},50);
   }
   document.getElementById('evModal').classList.add('open');
-  setTimeout(function(){document.getElementById('eT').focus()},160);
+  setTimeout(function(){document.getElementById('eT').focus();calcEndTime()},160);
 }
 function closeEvModal(){document.getElementById('evModal').classList.remove('open');A.editEvId=null}
+function calcEndTime(){
+  const h=document.getElementById('eH').value;
+  const dur=parseInt(document.getElementById('eDur').value)||0;
+  if(!h||!dur){document.getElementById('eEndTime').textContent='—';document.getElementById('eEndNote').textContent='';return}
+  const sm=parseInt(h.split(':')[0])*60+parseInt(h.split(':')[1]);
+  let em=sm+dur;
+  const note=document.getElementById('eEndNote');
+  // Verificar se cruza intervalo
+  if(sm<LUNCH_S&&em>LUNCH_S){
+    em=em+(LUNCH_E-LUNCH_S); // adicionar 60min do intervalo
+    note.textContent='(+1h intervalo)';
+    note.style.color='var(--a700)';
+  } else if(sm>=LUNCH_S&&sm<LUNCH_E){
+    note.textContent='⚠ horário de intervalo';
+    note.style.color='var(--d600)';
+  } else {
+    note.textContent='';
+  }
+  const eh=Math.floor(em/60),em2=em%60;
+  document.getElementById('eEndTime').textContent=String(eh).padStart(2,'0')+':'+String(em2).padStart(2,'0');
+}
 function togRecur(){
   document.getElementById('recurOpts').classList.toggle('show',document.getElementById('eRecur').checked);
   if(document.getElementById('eRecur').checked&&!document.getElementById('eUntil').value){const d=new Date();d.setMonth(d.getMonth()+2);document.getElementById('eUntil').value=fiso(d)}

@@ -273,7 +273,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
     <div class="hrt">
       <span id="hdate"></span>
       <button class="hbtn s" onclick="exportJSON()">↓ exportar</button>
-      <button class="hbtn p" onclick="openEvModal()">+ evento</button>
+      <button class="hbtn p" onclick="openTv3Modal()">+ evento</button>
     </div>
   </header>
   <div id="main">
@@ -318,7 +318,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
         <div class="twrap">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--m200)">
             <div><h2 style="font-family:'Space Grotesk',system-ui;font-size:20px;font-weight:600">Tarefas</h2><p style="font-size:11px;color:var(--g500);margin-top:4px">Afazeres, cobranças, ligações e pendências</p></div>
-            <button class="hbtn p" onclick="openTaskModal()">+ tarefa</button>
+            <button class="hbtn p" onclick="openTv3Modal()">+ tarefa</button>
           </div>
           <div class="tfilters">
             <button class="tfbtn on" onclick="fTask('all',this)">Todas</button>
@@ -345,7 +345,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
         <div class="rwrap">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--m200)">
             <div><h2 style="font-family:'Space Grotesk',system-ui;font-size:20px;font-weight:600">Rotinas</h2></div>
-            <button class="hbtn s" onclick="addRoutine()">+ rotina</button>
+            <button class="hbtn s" onclick="openTv3Modal(null,{template:true})">+ rotina</button>
           </div>
           <div class="rlist" id="rlist"></div>
         </div>
@@ -422,6 +422,88 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
   </div>
 </div>
 
+<!-- TASK V3 MODAL — fonte única operacional -->
+<div class="mbg" id="tv3Modal">
+  <div class="mbox">
+    <p class="mttl" id="tv3Mttl">Nova task</p>
+    <div class="fg"><label class="fl">Título</label><input class="fi" id="v3T" type="text"></div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Tipo</label><select class="fsel" id="v3Type">
+        <option value="coord_tecnica">Coordenação Técnica</option>
+        <option value="planejamento">Planejamento</option>
+        <option value="comercial">Comercial</option>
+        <option value="financeiro">Financeiro</option>
+        <option value="marketing">Marketing</option>
+        <option value="administrativo">Administrativo</option>
+        <option value="estrategico">Estratégico</option>
+      </select></div>
+      <div class="fg"><label class="fl">Modalidade</label><select class="fsel" id="v3Mod">
+        <option value="">— nenhuma —</option>
+        <option value="reuniao">Reunião</option>
+        <option value="visita">Visita</option>
+        <option value="ligacao">Ligação</option>
+        <option value="producao">Produção</option>
+        <option value="online">Online</option>
+        <option value="entrega">Entrega</option>
+      </select></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Cliente</label><select class="fsel" id="v3Cli"></select></div>
+      <div class="fg"><label class="fl">Prioridade</label><select class="fsel" id="v3Prio">
+        <option value="critical">Crítica</option>
+        <option value="high">Alta</option>
+        <option value="medium" selected>Média</option>
+        <option value="low">Baixa</option>
+      </select></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Status</label><select class="fsel" id="v3Status">
+        <option value="not_started" selected>Não iniciada</option>
+        <option value="in_progress">Em andamento</option>
+        <option value="waiting_client">Aguard. cliente</option>
+        <option value="waiting_third_party">Aguard. terceiro</option>
+        <option value="completed">Concluída</option>
+        <option value="cancelled">Cancelada</option>
+      </select></div>
+      <div class="fg"><label class="fl">Entrega</label><select class="fsel" id="v3DelType">
+        <option value="">— não é entrega —</option>
+        <option value="relatorio">Relatório</option>
+        <option value="cronograma">Cronograma</option>
+        <option value="analise">Análise</option>
+        <option value="revisao">Revisão</option>
+        <option value="documento">Documento</option>
+      </select></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Data</label><input class="fi" id="v3D" type="date"></div>
+      <div class="fg"><label class="fl">Hora</label><input class="fi" id="v3H" type="time" value="09:00"></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Duração (min)</label><input class="fi" id="v3Dur" type="number" value="60" min="15" step="15"></div>
+      <div class="fg"><label class="fl">Horas planejadas (min)</label><input class="fi" id="v3Plan" type="number" min="0" step="15" placeholder="—"></div>
+    </div>
+    <div class="fg" style="flex-direction:row;align-items:center;gap:8px;background:var(--bone);border:1px solid var(--m200);border-radius:6px;padding:8px 12px;margin-bottom:0">
+      <input type="checkbox" id="v3Locked" style="accent-color:var(--b600);width:14px;height:14px;cursor:pointer;flex-shrink:0">
+      <label for="v3Locked" style="font-size:12px;color:var(--g600);cursor:pointer;line-height:1.4">Travar — drag não altera este horário</label>
+    </div>
+    <div class="fg" style="margin-top:12px"><label class="fl">Descrição</label><textarea class="fta" id="v3Desc" placeholder="Contexto, detalhes, próximos passos..."></textarea></div>
+    <div class="recur-sec" id="v3RecurSec">
+      <label class="recur-toggle"><input type="checkbox" id="v3Recur" onchange="togV3Recur()">Recorrente</label>
+      <div class="recur-opts" id="v3RecurOpts">
+        <div class="frow" style="margin-bottom:0">
+          <div class="fg" style="margin-bottom:0"><label class="fl">Repetir</label><select class="fsel" id="v3Freq"><option value="weekly">Toda semana</option><option value="biweekly">A cada 2 semanas</option><option value="monthly">Todo mês</option><option value="daily">Todo dia</option></select></div>
+          <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input class="fi" id="v3Until" type="date"></div>
+        </div>
+      </div>
+    </div>
+    <div class="mbtns">
+      <button class="mbdel" id="tv3DelBtn" onclick="delTaskV3()" style="display:none;margin-right:auto">Deletar</button>
+      <button class="mbcancel" onclick="closeTv3Modal()">Cancelar</button>
+      <button class="mbsave" onclick="saveTaskV3()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- CLIENT MODAL -->
 <div class="mbg" id="cliModal">
   <div class="mbox wide">
@@ -454,7 +536,7 @@ const A={
   schemaVersion:parseInt(localStorage.getItem('coreSchemaV')||'0',10),
   cli:{},types:{routine:true,event:true},
   mon:monday(new Date()),tab:'gantt',
-  editEvId:null,editTaskId:null,editCliId:null,taskFilter:'all',
+  editEvId:null,editTaskId:null,editTaskV3Id:null,editCliId:null,taskFilter:'all',
   selSet:new Set(),
   zoomIdx:2,dayOffset:0
 };
@@ -503,7 +585,7 @@ function save(){
   }
 }
 function initFilters(){A.clients.forEach(c=>{if(!(c.id in A.cli))A.cli[c.id]=true});const w=document.getElementById('cliFilters');w.innerHTML='';A.clients.forEach(c=>{const l=document.createElement('label');l.className='cli';l.innerHTML='<input type="checkbox" '+(A.cli[c.id]?'checked':'')+' onchange="togCli(\''+c.id+'\')"><span class="dot" style="background:'+c.color+'"></span>'+c.name;w.appendChild(l)})}
-function buildSel(id){const s=document.getElementById(id);if(!s)return;s.innerHTML='';A.clients.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;s.appendChild(o)})}
+function buildSel(id){const s=document.getElementById(id);if(!s)return;s.innerHTML='<option value="">— nenhum —</option>';A.clients.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;s.appendChild(o)})}
 
 function weekR(mon){
   const evs=[],add=(di,h,m,dur,title,cli,notes)=>{const d=new Date(mon);d.setDate(d.getDate()+di);evs.push({id:'rt_'+di+'_'+h+'_'+m,title,date:fiso(d),time:pad(h)+':'+pad(m),duration:dur,client:cli,notes:notes||'',desc:'',isRoutine:true})};
@@ -560,7 +642,7 @@ function rGantt(){
     const dh=document.createElement('div');
     dh.className='wv-dh'+(isTod?' tod':'')+(isBlk?' blk':'');
     dh.innerHTML='<div class="wv-dname">'+fwd(d)+'</div><div class="wv-dnum">'+d.getDate()+'</div>'+(isBlk?'<div class="wv-dtag vt">Vier</div>':isWknd?'':'<div class="wv-dtag ft">Torres</div>');
-    dh.onclick=(function(date){return function(){document.getElementById('eD').value=date;openEvModal()}})(ds);
+    dh.onclick=(function(date){return function(){openTv3Modal(null,{date:date})}})(ds);
     HDR.appendChild(dh);
     // Coluna
     const col=document.createElement('div');
@@ -652,21 +734,22 @@ function rGantt(){
           if(now-lastTap<380){
             lastTap=0;
             if(geIsTemplate){
-              // Override: busca ou cria — suporta v3 e legado
-              const existing=A.events.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
+              // Override: busca ou cria — FASE 3.5: override vai para A.taskV3
+              const existing=A.taskV3.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
               if(existing>-1){
-                openEvModal(A.events[existing].id);
+                openTv3Modal(A.taskV3[existing].id);
               } else {
-                const ov={id:uid(),title:ge.title,date:ds,time:ge.time,duration:ge.duration||ge.durationMinutes,client:geClientId,type:'work',desc:ge.notes||ge.desc||'',notes:'',isRoutine:false,locked:false,_overrideRoutine:ge.id};
-                A.events.push(ov);
+                const now=new Date().toISOString();
+                const ov={id:uid(),title:ge.title,date:ds,time:ge.time||ge.time,duration:ge.duration||ge.durationMinutes||60,durationMinutes:ge.duration||ge.durationMinutes||60,clientId:geClientId,client:geClientId,type:ge.type||'coord_tecnica',modality:ge.modality||null,status:'not_started',priority:ge.priority||'medium',prio:ge.priority||'medium',done:false,locked:false,template:false,isDelivery:false,deliveryType:null,recur:null,desc:ge.notes||ge.desc||'',notes:'',plannedMinutes:null,actualMinutes:null,_overrideRoutine:ge.id,_rid:null,_doneByDate:{},createdAt:now,updatedAt:now,completedAt:null};
+                A.taskV3.push(ov);
                 snapshot('create');
                 save();
-                openEvModal(ov.id);
+                openTv3Modal(ov.id);
               }
             } else {
               // task v3 ou evento legado
               if(ge._doneByDate!==undefined){
-                openTaskV3Modal(ge.id);
+                openTv3Modal(ge.id);
               } else {
                 openEvModal(ge.id);
               }
@@ -678,13 +761,11 @@ function rGantt(){
         col.appendChild(el);
       });
     });
-    // Click vazio
+    // Click vazio — abre modal v3 com data/hora preenchidos
     col.addEventListener('click',function(ev2){
       if(ev2.target===col||ev2.target.classList.contains('wv-hline')||ev2.target.classList.contains('wv-blkl')){
         const y=ev2.clientY-col.getBoundingClientRect().top;
-        document.getElementById('eD').value=ds;
-        document.getElementById('eH').value=yToTime(y);
-        openEvModal();
+        openTv3Modal(null,{date:ds,time:yToTime(y)});
       }
     });
     DAYS.appendChild(col);
@@ -871,7 +952,7 @@ function rTasks(){
     chk.addEventListener('change',function(){doneTask(t.id)});
     card.appendChild(chk);
     const body=document.createElement('div');body.className='tkbody';
-    body.addEventListener('click',function(){t._doneByDate!==undefined?openTaskV3Modal(t.id):openTaskModal(t.id)});
+    body.addEventListener('click',function(){openTv3Modal(t.id)});
     const ttl=document.createElement('div');ttl.className='tktitle';ttl.textContent=t.title;body.appendChild(ttl);
     const meta=document.createElement('div');meta.className='tkmeta';
     const cliSpan=document.createElement('span');cliSpan.className='tkcli';
@@ -1054,9 +1135,9 @@ function saveCli(){
   const data={name,type:document.getElementById('cType').value,contact:document.getElementById('cContact').value,status:document.getElementById('cStatus').value,projects:document.getElementById('cProjects').value,notes:document.getElementById('cNotes').value,color};
   if(A.editCliId){const idx=A.clients.findIndex(x=>x.id===A.editCliId);if(idx>-1)A.clients[idx]=Object.assign({},A.clients[idx],data)}
   else A.clients.push(Object.assign({id:uid()},data));
-  save();closeCliModal();rClients();initFilters();buildSel('eCli');buildSel('tCli');
+  save();closeCliModal();rClients();initFilters();buildSel('eCli');buildSel('tCli');buildSel('v3Cli');
 }
-function delCli(id){const c=A.clients.find(x=>x.id===id);if(c&&confirm('Remover "'+c.name+'"?')){softDelete('client',id,c);A.clients=A.clients.filter(x=>x.id!==id);snapshot('delete');save();rClients();initFilters();buildSel('eCli');buildSel('tCli')}}
+function delCli(id){const c=A.clients.find(x=>x.id===id);if(c&&confirm('Remover "'+c.name+'"?')){softDelete('client',id,c);A.clients=A.clients.filter(x=>x.id!==id);snapshot('delete');save();rClients();initFilters();buildSel('eCli');buildSel('tCli');buildSel('v3Cli');}}
 
 // CALENDÁRIO ANUAL
 function rYear(){
@@ -1077,7 +1158,7 @@ function rYear(){
     while(cur<=last||cur.getDay()!==0){
       const ds=fiso(cur),hasEv=A.events.some(e=>e.date===ds&&!e._taskId),hasTk=td.has(ds),isBlk=BLOCKED.includes(cur.getDay())&&cur.getMonth()===mo;
       const el=document.createElement('div');el.className='cd'+(cur.getMonth()!==mo?' other':'')+(hasTk?' hastask':hasEv?' hasev':'')+(isBlk?' blkd':'')+(ds===ts?' today':'');
-      el.textContent=cur.getDate();el.onclick=(function(d){return function(){document.getElementById('eD').value=d;openEvModal()}})(ds);
+      el.textContent=cur.getDate();el.onclick=(function(d){return function(){openTv3Modal(null,{date:d})}})(ds);
       gd.appendChild(el);cur.setDate(cur.getDate()+1);
     }
     card.appendChild(gd);g.appendChild(card);
@@ -1100,9 +1181,34 @@ function toggleSel(id,el){
 }
 function updateSelBar(){const bar=document.getElementById('sel-bar'),n=A.selSet.size;if(n>0){bar.classList.add('show');document.getElementById('sel-count').textContent=n+' selecionado'+(n>1?'s':'')}else bar.classList.remove('show')}
 function clearSelection(){A.selSet=new Set();updateSelBar();rGantt()}
-function deleteSelected(){if(!A.selSet.size)return;if(!confirm('Apagar '+A.selSet.size+' evento(s)?'))return;A.events=A.events.filter(x=>!A.selSet.has(x.id));A.selSet=new Set();save();updateSelBar();rGantt()}
-function lockSelected(){A.events.forEach(x=>{if(A.selSet.has(x.id))x.locked=true});save();clearSelection()}
-function unlockSelected(){A.events.forEach(x=>{if(A.selSet.has(x.id))x.locked=false});save();clearSelection()}
+function deleteSelected(){
+  if(!A.selSet.size)return;
+  if(!confirm('Apagar '+A.selSet.size+' task(s)?'))return;
+  A.selSet.forEach(function(id){
+    const t=A.taskV3.find(x=>x.id===id);
+    if(t)softDelete('task',id,t);
+  });
+  A.taskV3=A.taskV3.filter(x=>!A.selSet.has(x.id));
+  // Legado: também remove de A.events se existir
+  A.events=A.events.filter(x=>!A.selSet.has(x.id));
+  A.selSet=new Set();snapshot('delete');save();updateSelBar();rGantt();
+}
+function lockSelected(){
+  A.selSet.forEach(function(id){
+    const i3=A.taskV3.findIndex(x=>x.id===id);
+    if(i3>-1){A.taskV3[i3].locked=true;A.taskV3[i3].updatedAt=new Date().toISOString();}
+    else A.events.forEach(x=>{if(x.id===id)x.locked=true;});
+  });
+  save();clearSelection();
+}
+function unlockSelected(){
+  A.selSet.forEach(function(id){
+    const i3=A.taskV3.findIndex(x=>x.id===id);
+    if(i3>-1){A.taskV3[i3].locked=false;A.taskV3[i3].updatedAt=new Date().toISOString();}
+    else A.events.forEach(x=>{if(x.id===id)x.locked=false;});
+  });
+  save();clearSelection();
+}
 
 // MODAL FECHAMENTO POR CLIQUE FORA
 ['evModal','taskModal','cliModal'].forEach(function(id){document.getElementById(id).addEventListener('click',function(e){if(e.target===document.getElementById(id))document.getElementById(id).classList.remove('open')})});
@@ -1110,6 +1216,188 @@ document.getElementById('eT').addEventListener('keydown',function(e){if(e.key===
 document.getElementById('tTitle').addEventListener('keydown',function(e){if(e.key==='Enter')saveTask()});
 
 function exportJSON(){const blob=new Blob([JSON.stringify({taskV3:A.taskV3,events:A.events,tasks:A.tasks,routines:A.routines,clients:A.clients,schemaVersion:A.schemaVersion},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
+
+// ============================================================
+// FASE 3.5: CONSOLIDAÇÃO OPERACIONAL — Task V3 como única fonte
+// ============================================================
+
+// Abrir modal v3 (criar ou editar)
+// id=null → criar | id=string → editar
+// prefill = { date, time, template } para criação com contexto
+function openTv3Modal(id, prefill){
+  A.editTaskV3Id = id || null;
+  buildSel('v3Cli');
+  const isEdit = !!id;
+  document.getElementById('tv3Mttl').textContent = isEdit ? 'Editar task' : 'Nova task';
+  document.getElementById('tv3DelBtn').style.display = isEdit ? 'block' : 'none';
+  document.getElementById('v3RecurSec').style.display = 'block';
+
+  if(isEdit){
+    // Tenta taskV3 primeiro; fallback para legado normalizado
+    let t = A.taskV3.find(x=>x.id===id);
+    if(!t){
+      // Legado: normaliza para exibição no modal v3
+      const leg = A.tasks.find(x=>x.id===id) || A.events.find(x=>x.id===id);
+      if(!leg)return;
+      t = {title:leg.title||'',type:leg.type||'administrativo',modality:null,clientId:leg.client||leg.clientId||'',priority:leg.prio==='med'?'medium':(leg.prio||'medium'),status:leg.done?'completed':'not_started',date:leg.date||leg.due||'',time:leg.time||'',durationMinutes:leg.duration||60,plannedMinutes:null,locked:!!leg.locked,desc:leg.desc||'',isDelivery:false,deliveryType:null,recur:leg.recur||null,_doneByDate:{}};
+    }
+    document.getElementById('v3T').value = t.title||'';
+    document.getElementById('v3Type').value = t.type||'coord_tecnica';
+    document.getElementById('v3Mod').value = t.modality||'';
+    document.getElementById('v3Cli').value = t.clientId||t.client||'';
+    document.getElementById('v3Prio').value = t.priority||t.prio==='med'?'medium':(t.prio||'medium');
+    document.getElementById('v3Status').value = t.status||'not_started';
+    document.getElementById('v3DelType').value = t.deliveryType||'';
+    document.getElementById('v3D').value = t.date||'';
+    document.getElementById('v3H').value = t.time||'';
+    document.getElementById('v3Dur').value = t.durationMinutes||t.duration||60;
+    document.getElementById('v3Plan').value = t.plannedMinutes||'';
+    document.getElementById('v3Locked').checked = !!t.locked;
+    document.getElementById('v3Desc').value = t.desc||'';
+    const hasR = !!(t.recur&&t.recur.freq);
+    document.getElementById('v3Recur').checked = hasR;
+    document.getElementById('v3RecurOpts').classList.toggle('show',hasR);
+    if(hasR){document.getElementById('v3Freq').value=t.recur.freq||'weekly';document.getElementById('v3Until').value=t.recur.until||'';}
+    else{document.getElementById('v3RecurOpts').classList.remove('show');}
+  } else {
+    // Criação — campos em branco ou prefill
+    const pf = prefill || {};
+    document.getElementById('v3T').value = '';
+    document.getElementById('v3Type').value = 'coord_tecnica';
+    document.getElementById('v3Mod').value = '';
+    document.getElementById('v3Cli').value = '';
+    document.getElementById('v3Prio').value = 'medium';
+    document.getElementById('v3Status').value = 'not_started';
+    document.getElementById('v3DelType').value = '';
+    document.getElementById('v3D').value = pf.date||'';
+    document.getElementById('v3H').value = pf.time||'';
+    document.getElementById('v3Dur').value = 60;
+    document.getElementById('v3Plan').value = '';
+    document.getElementById('v3Locked').checked = false;
+    document.getElementById('v3Desc').value = '';
+    document.getElementById('v3Recur').checked = !!pf.template;
+    document.getElementById('v3RecurOpts').classList.toggle('show',!!pf.template);
+    if(pf.template){const df=new Date();df.setMonth(df.getMonth()+12);document.getElementById('v3Until').value=fiso(df);}
+    else{document.getElementById('v3Until').value='';}
+  }
+  document.getElementById('tv3Modal').classList.add('open');
+  setTimeout(function(){document.getElementById('v3T').focus();},160);
+}
+
+function closeTv3Modal(){
+  document.getElementById('tv3Modal').classList.remove('open');
+  A.editTaskV3Id = null;
+}
+
+function togV3Recur(){
+  document.getElementById('v3RecurOpts').classList.toggle('show',document.getElementById('v3Recur').checked);
+  if(document.getElementById('v3Recur').checked&&!document.getElementById('v3Until').value){const d=new Date();d.setMonth(d.getMonth()+3);document.getElementById('v3Until').value=fiso(d);}
+}
+
+// Salvar task v3 — fonte única de escrita para criar e editar
+function saveTaskV3(){
+  const title=document.getElementById('v3T').value.trim();
+  if(!title){alert('Título obrigatório.');return;}
+  const deliveryTypeVal = document.getElementById('v3DelType').value;
+  const statusVal = document.getElementById('v3Status').value;
+  const now = new Date().toISOString();
+  const data = {
+    title:title,
+    type:document.getElementById('v3Type').value,
+    modality:document.getElementById('v3Mod').value||null,
+    clientId:document.getElementById('v3Cli').value||null,
+    client:document.getElementById('v3Cli').value||null,
+    priority:document.getElementById('v3Prio').value,
+    prio:document.getElementById('v3Prio').value,
+    status:statusVal,
+    done:statusVal==='completed',
+    isDelivery:!!deliveryTypeVal,
+    deliveryType:deliveryTypeVal||null,
+    date:document.getElementById('v3D').value||null,
+    time:document.getElementById('v3H').value||null,
+    durationMinutes:parseInt(document.getElementById('v3Dur').value)||60,
+    duration:parseInt(document.getElementById('v3Dur').value)||60,
+    plannedMinutes:parseInt(document.getElementById('v3Plan').value)||null,
+    locked:document.getElementById('v3Locked').checked,
+    desc:document.getElementById('v3Desc').value.trim(),
+    notes:'',
+    recur:document.getElementById('v3Recur').checked?{freq:document.getElementById('v3Freq').value,until:document.getElementById('v3Until').value||null,day:''}:null,
+    updatedAt:now,
+    completedAt:statusVal==='completed'?now:null,
+  };
+
+  if(A.editTaskV3Id){
+    // Edição: tenta taskV3 primeiro, migra legado se necessário
+    let idx = A.taskV3.findIndex(x=>x.id===A.editTaskV3Id);
+    if(idx>-1){
+      const prev = A.taskV3[idx];
+      // Fase 2: registrar remarcação se data/hora mudaram
+      if((prev.date!==data.date||prev.time!==data.time)&&prev.date&&data.date){
+        logReschedule(prev.id,prev.title,prev.date,prev.time||'',data.date,data.time||'','modal');
+      }
+      const keep = {id:prev.id,template:prev.template,_overrideRoutine:prev._overrideRoutine,_rid:prev._rid,_doneByDate:prev._doneByDate||{},createdAt:prev.createdAt||now,actualMinutes:prev.actualMinutes||null};
+      A.taskV3[idx] = Object.assign({},keep,data);
+    } else {
+      // Legado: migra agora e salva em taskV3
+      const legTask = A.tasks.find(x=>x.id===A.editTaskV3Id);
+      const legEv   = A.events.find(x=>x.id===A.editTaskV3Id);
+      const base = legTask||legEv;
+      const newT = Object.assign({id:A.editTaskV3Id,template:false,_overrideRoutine:null,_rid:null,_doneByDate:{},createdAt:now,actualMinutes:null},data);
+      A.taskV3.push(newT);
+      // Marca como migrado (não remove do legado — Fase 3 proíbe remoção)
+    }
+    detectConflicts(data.date||'');
+  } else {
+    // Criação: sempre vai para A.taskV3
+    const t = Object.assign({
+      id:uid(),template:false,_overrideRoutine:null,_rid:null,
+      _doneByDate:{},createdAt:now,actualMinutes:null
+    }, data);
+    A.taskV3.push(t);
+    snapshot('create');
+    detectConflicts(data.date||'');
+  }
+  save();
+  closeTv3Modal();
+  if(A.tab==='gantt')rGantt();
+  if(A.tab==='tasks')rTasks();
+  if(A.tab==='year')rYear();
+}
+
+// Deletar task v3 — via modal
+function delTaskV3(){
+  if(!A.editTaskV3Id||!confirm('Deletar?'))return;
+  const t=A.taskV3.find(x=>x.id===A.editTaskV3Id);
+  if(t){
+    softDelete('task',A.editTaskV3Id,t);
+    A.taskV3=A.taskV3.filter(x=>x.id!==A.editTaskV3Id);
+    snapshot('delete');
+  }
+  save();
+  closeTv3Modal();
+  if(A.tab==='gantt')rGantt();
+  if(A.tab==='tasks')rTasks();
+}
+
+// doneR atualizado: conclui em A.taskV3, fallback para A.routines
+function doneR(id){
+  const t3=A.taskV3.find(x=>x.id===id);
+  if(t3){
+    const isDone=t3.status!=='completed';
+    t3.status=isDone?'completed':'not_started';
+    t3.done=isDone;
+    t3.updatedAt=new Date().toISOString();
+    t3.completedAt=isDone?new Date().toISOString():null;
+    save();rRoutines();rDash();return;
+  }
+  const r=A.routines.find(x=>x.id===id);if(r){r.done=!r.done;save();rRoutines();}
+}
+
+// Fechar modal v3 por clique fora
+document.getElementById('tv3Modal').addEventListener('click',function(e){
+  if(e.target===document.getElementById('tv3Modal'))closeTv3Modal();
+});
+document.getElementById('v3T').addEventListener('keydown',function(e){if(e.key==='Enter')saveTaskV3();});
 
 // ============================================================
 // FASE 3: MODELO ÚNICO DE TASK
@@ -1289,26 +1577,8 @@ function tasksForWeek(mon){
 }
 
 // Modal simples para editar task v3 (reutiliza modal de evento legado)
-function openTaskV3Modal(id){
-  const t=A.taskV3.find(x=>x.id===id);
-  if(!t)return;
-  // Popula campos do modal de evento legado com dados v3
-  A.editEvId=id;
-  buildSel('eCli');
-  document.getElementById('evMttl').textContent='Editar task';
-  document.getElementById('evDelBtn').style.display='block';
-  document.getElementById('recurSec').style.display='none';
-  document.getElementById('eT').value=t.title;
-  document.getElementById('eD').value=t.date||'';
-  document.getElementById('eH').value=t.time||'09:00';
-  document.getElementById('eDur').value=t.durationMinutes||t.duration||60;
-  document.getElementById('eCli').value=t.clientId||t.client||'';
-  document.getElementById('eTp').value='work';
-  document.getElementById('eDesc').value=t.desc||'';
-  document.getElementById('eLocked').checked=!!t.locked;
-  document.getElementById('evModal').classList.add('open');
-  setTimeout(function(){document.getElementById('eT').focus()},160);
-}
+// openTaskV3Modal: redirecionado para openTv3Modal (Fase 3.5)
+function openTaskV3Modal(id){openTv3Modal(id);}
 
 // ============================================================
 // FASE 2: AGENDA FUNCIONAL
@@ -1474,8 +1744,7 @@ function validateConsistency(){
 }
 
 document.getElementById('hdate').textContent=ffull(new Date());
-initFilters();buildSel('eCli');buildSel('tCli');
-// FASE 3: migrar dados para modelo único se necessário
+initFilters();buildSel('eCli');buildSel('tCli');buildSel('v3Cli');
 migrateToV3();
 // Validação inicial
 validateConsistency();

@@ -275,6 +275,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
     <div class="hrt">
       <span id="hdate"></span>
       <button class="hbtn s" onclick="exportJSON()">↓ exportar</button>
+      <button class="hbtn s" onclick="resetApp()" title="Limpar dados corrompidos e restaurar">↺ reset</button>
       <button class="hbtn p" onclick="openEvModal()">+ evento</button>
     </div>
   </header>
@@ -571,6 +572,7 @@ function rGantt(){
     const dE=new Date(A.mon);dE.setDate(dE.getDate()+Math.min(A.dayOffset+vis-1,6));
     document.getElementById('dlbl').textContent=fdmm(dS)+' – '+fdmm(dE);
   }
+  if(typeof A.dayOffset!=='number'||isNaN(A.dayOffset)||A.dayOffset<0)A.dayOffset=0;
   if(A.dayOffset+vis>7)A.dayOffset=Math.max(0,7-vis);
   const HDR=document.getElementById('wv-days-hdr'),TC=document.getElementById('wv-times'),DAYS=document.getElementById('wv-days');
   HDR.innerHTML='';TC.innerHTML='';DAYS.innerHTML='';
@@ -596,9 +598,9 @@ function rGantt(){
     if(isTod){const nm=new Date().getHours()*60+new Date().getMinutes();if(nm>=SH*60&&nm<=EH*60){const nl=document.createElement('div');nl.className='wv-nowline';nl.style.top=minsToY(nm)+'px';col.appendChild(nl)}}
     if(isBlk){const b=document.createElement('div');b.className='wv-blkl';b.innerHTML='<span>VIER · CRICÍUMA</span>';col.appendChild(b)}
     // Eventos: rotinas com override suprimidas
-    const overridden=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine));
-    // Suprimir rotinas explicitamente deletadas neste dia
-    const deletedRt=new Set(Object.keys(A.done).filter(k=>k.startsWith('_del_')&&k.endsWith('_'+ds)).map(k=>k.replace('_del_','').replace('_'+ds,'')));
+    let overridden=new Set(),deletedRt=new Set();
+    try{overridden=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine));}catch(e){}
+    try{deletedRt=new Set(Object.keys(A.done).filter(k=>k.startsWith('_del_')&&k.endsWith('_'+ds)).map(k=>k.replace('_del_','').replace('_'+ds,'')));}catch(e){}
     const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!overridden.has(e.id)&&!deletedRt.has(e.id)):[];
     const dayUsr=A.types.event?userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!e.isRoutine):[];
     const allEvs=[...dayRt,...dayUsr].sort((a,b)=>timeToMins(a.time)-timeToMins(b.time));
@@ -610,10 +612,12 @@ function rGantt(){
     const placed=new Set();
     allEvs.forEach(e=>{
       if(placed.has(e.id))return;
-      const grp=overlapGroup(e,allEvs);
+      let grp;
+      try{grp=overlapGroup(e,allEvs);}catch(err){grp=[e];}
       grp.forEach(x=>placed.add(x.id));
       const gc=grp.length;
       grp.forEach((ge,gi)=>{
+        try{
         const sm=timeToMins(ge.time),em=sm+(ge.duration||60);
         const cw=Math.floor(100/gc),cl=gi*cw;
         const dk=ge.id+'_'+ds,isDone=!!A.done[dk];
@@ -693,6 +697,7 @@ function rGantt(){
           if(si===0&&!ge.isRoutine&&!ge.locked)attachDrag(el,ge,tp,totH);
           col.appendChild(el);
         });
+        }catch(err){console.warn('rGantt evento erro:',err);} // fim try por evento
       });
     });
     // Click vazio
@@ -1122,12 +1127,25 @@ function unlockSelected(){A.events.forEach(x=>{if(A.selSet.has(x.id))x.locked=fa
 document.getElementById('eT').addEventListener('keydown',function(e){if(e.key==='Enter')saveEv()});
 document.getElementById('tTitle').addEventListener('keydown',function(e){if(e.key==='Enter')saveTask()});
 
+function resetApp(){
+  if(!confirm('Limpar todos os dados do localStorage e restaurar o app ao estado padrão?'))return;
+  localStorage.removeItem('coreEv');
+  localStorage.removeItem('coreTasks');
+  localStorage.removeItem('coreRot');
+  localStorage.removeItem('coreCli');
+  localStorage.removeItem('coreDone');
+  location.reload();
+}
 function exportJSON(){const blob=new Blob([JSON.stringify({events:A.events,tasks:A.tasks,routines:A.routines,clients:A.clients},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
 
 document.getElementById('hdate').textContent=ffull(new Date());
 // Limpar tarefas corrompidas (sem id válido) que vieram do localStorage
 A.tasks=A.tasks.filter(function(t){return t&&t.id&&typeof t.id==='string'&&t.id.length>0});
 A.events=A.events.filter(function(e){return e&&e.id&&typeof e.id==='string'&&e.id.length>0});
+// Limpar A.done se não for objeto puro
+if(typeof A.done!=='object'||Array.isArray(A.done))A.done={};
+// Resetar dayOffset se corrompido
+if(typeof A.dayOffset!=='number'||isNaN(A.dayOffset))A.dayOffset=0;
 save();
 initFilters();buildSel('eCli');buildSel('tCli');rGantt();
 </script>

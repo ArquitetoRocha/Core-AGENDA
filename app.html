@@ -817,17 +817,19 @@ function togTaskRecur(){
   if(document.getElementById('tRecur').checked&&!document.getElementById('tUntil').value){const d=new Date();d.setMonth(d.getMonth()+3);document.getElementById('tUntil').value=fiso(d)}
 }
 function genTaskEvents(taskId,title,cli,due,recur){
-  // Remove eventos antigos desta tarefa
   A.events=A.events.filter(x=>x._taskId!==taskId);
   if(!due)return;
   const makeEv=function(date){return{id:'task_'+uid(),title:'⚑ '+title,date:date,time:'08:00',duration:30,client:cli,type:'deadline',notes:'',desc:'',isRoutine:false,_taskId:taskId}};
   if(!recur||!recur.freq){A.events.push(makeEv(due));return;}
-  // Gerar datas recorrentes
-  let cur=new Date(due);
-  const until=recur.until?new Date(recur.until):new Date(new Date(due).setFullYear(new Date(due).getFullYear()+1));
+  // Parsear como local para evitar UTC shift
+  function parseLocal(s){const p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2])}
+  function toISO(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+  let cur=parseLocal(due);
+  const untilStr=recur.until&&recur.until.length===10?recur.until:'';
+  const until=untilStr?parseLocal(untilStr):parseLocal(due.slice(0,4)+'-12-31');
   let safety=0;
   while(cur<=until&&safety<200){
-    A.events.push(makeEv(fiso(cur)));
+    A.events.push(makeEv(toISO(cur)));
     safety++;
     if(recur.freq==='daily')cur.setDate(cur.getDate()+1);
     else if(recur.freq==='weekly')cur.setDate(cur.getDate()+7);

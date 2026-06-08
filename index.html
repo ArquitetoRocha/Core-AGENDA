@@ -145,6 +145,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 .tkdue.ov{color:var(--d600);font-weight:600}.tkdue.tod{color:var(--a700);font-weight:600}
 .tkprio{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px}
 .ph{background:var(--d100);color:var(--d600)}.pm{background:var(--a100);color:var(--a700)}.pl{background:var(--s100);color:var(--s600)}
+.tktype{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:none}
 .tkdel{padding:4px 8px;border:1px solid var(--m200);background:transparent;border-radius:6px;font-size:11px;color:var(--g500);cursor:pointer;flex-shrink:0}
 .tkdel:hover{background:var(--d100);color:var(--d600)}
 /* DASH */
@@ -402,6 +403,15 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
     <div class="frow"><div class="fg"><label class="fl">Prazo</label><input class="fi" id="tDue" type="date"></div><div class="fg"><label class="fl">Prioridade</label><select class="fsel" id="tPrio"><option value="high">Alta</option><option value="med" selected>Média</option><option value="low">Baixa</option></select></div></div>
     <div class="frow"><div class="fg"><label class="fl">Cliente</label><select class="fsel" id="tCli"></select></div><div class="fg"><label class="fl">Tipo</label><select class="fsel" id="tType"><option value="task">Tarefa</option><option value="call">Ligação</option><option value="charge">Cobrança</option><option value="doc">Documento</option><option value="meeting">Reunião</option></select></div></div>
     <div class="fg"><label class="fl">Descrição</label><textarea class="fta" id="tDesc" placeholder="Contexto, detalhes..."></textarea></div>
+    <div class="recur-sec" id="tRecurSec" style="margin-bottom:12px">
+      <label class="recur-toggle"><input type="checkbox" id="tRecur" onchange="togTaskRecur()">Tarefa recorrente</label>
+      <div class="recur-opts" id="tRecurOpts">
+        <div class="frow" style="margin-bottom:0">
+          <div class="fg" style="margin-bottom:0"><label class="fl">Repetir</label><select class="fsel" id="tFreq"><option value="weekly">Toda semana</option><option value="biweekly">A cada 2 semanas</option><option value="monthly">Todo mês</option><option value="daily">Todo dia</option></select></div>
+          <div class="fg" style="margin-bottom:0"><label class="fl">Até</label><input class="fi" id="tUntil" type="date"></div>
+        </div>
+      </div>
+    </div>
     <div style="background:var(--b100);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--b600);margin-bottom:4px">✓ O prazo aparece automaticamente no calendário</div>
     <div class="mbtns">
       <button class="mbdel" id="taskDelBtn" onclick="delEditTask()" style="display:none;margin-right:auto">Deletar</button>
@@ -741,22 +751,51 @@ function rTasks(){
   else if(A.taskFilter==='done')tasks=tasks.filter(t=>t.done);
   tasks.sort((a,b)=>{if(a.done!==b.done)return a.done?1:-1;const p={high:0,med:1,low:2};return p[a.prio||'med']-p[b.prio||'med']});
   if(!tasks.length){const e=document.createElement('div');e.style.cssText='text-align:center;padding:40px;color:var(--g400);font-size:13px';e.textContent='Nenhuma tarefa.';list.appendChild(e);return}
-  const pm={high:'Alta',med:'Média',low:'Baixa'},tm={task:'Tarefa',call:'Ligação',charge:'Cobrança',doc:'Documento',meeting:'Reunião'};
+  const pm={high:'Alta',med:'Média',low:'Baixa'};
+  const tm={task:'Tarefa',call:'Ligação',charge:'Cobrança',doc:'Documento',meeting:'Reunião'};
+  // Cores semânticas por tipo
+  const typeColor={task:'var(--b600)',call:'var(--s600)',charge:'var(--d600)',doc:'var(--g500)',meeting:'var(--a500)'};
+  const typeBg={task:'var(--b100)',call:'var(--s100)',charge:'var(--d100)',doc:'var(--m100)',meeting:'var(--a100)'};
   tasks.forEach(function(t){
-    const cli=cliById(t.client),isOv=t.due&&t.due<today&&!t.done,isTod=t.due===today&&!t.done;
-    const card=document.createElement('div');card.className='tkcard'+(t.done?' done-task':'');
-    card.innerHTML='<input type="checkbox" class="tkchk" '+(t.done?'checked':'')+' onchange="doneTask(\''+t.id+'\')">'+
-      '<div class="tkbody" onclick="openTaskModal(\''+t.id+'\')">'+
-      '<div class="tktitle">'+t.title+'</div>'+
-      '<div class="tkmeta">'+
-      '<span class="tkcli" style="background:'+cli.color+'22;color:'+cli.color+'">'+cli.name.split(' ')[0]+'</span>'+
-      '<span class="tkprio p'+((t.prio||'m')[0])+'">'+pm[t.prio||'med']+'</span>'+
-      (t.type?'<span style="font-size:10px;color:var(--g500)">'+( tm[t.type]||'')+'</span>':'')+''+
-      (t.due?'<span class="tkdue'+(isOv?' ov':isTod?' tod':'')+'">'+( isOv?'⚠ Atrasado · ':(isTod?'Hoje · ':''))+ffull(t.due)+'</span>':'')+
-      '</div>'+
-      (t.desc?'<div style="font-size:11px;color:var(--g500);margin-top:4px">'+t.desc+'</div>':'')+
-      '</div>'+
-      '<button class="tkdel" onclick="delTask(\''+t.id+'\')">×</button>';
+    const cli=cliById(t.client);
+    const isOv=t.due&&t.due<today&&!t.done,isTod=t.due===today&&!t.done;
+    const card=document.createElement('div');
+    card.className='tkcard'+(t.done?' done-task':'');
+    // Borda esquerda colorida pelo cliente
+    card.style.borderLeft='3px solid '+cli.color;
+    // Linha 1: checkbox
+    const chk=document.createElement('input');chk.type='checkbox';chk.className='tkchk';if(t.done)chk.checked=true;
+    chk.addEventListener('change',function(){doneTask(t.id)});
+    card.appendChild(chk);
+    // Corpo clicável
+    const body=document.createElement('div');body.className='tkbody';
+    body.addEventListener('click',function(){openTaskModal(t.id)});
+    // Título
+    const ttl=document.createElement('div');ttl.className='tktitle';ttl.textContent=t.title;body.appendChild(ttl);
+    // Meta row
+    const meta=document.createElement('div');meta.className='tkmeta';
+    // Badge cliente
+    const cliSpan=document.createElement('span');cliSpan.className='tkcli';
+    cliSpan.style.background=cli.color+'22';cliSpan.style.color=cli.color;
+    cliSpan.textContent=cli.name.split(' ')[0];meta.appendChild(cliSpan);
+    // Badge tipo com cor semântica
+    if(t.type){const tSpan=document.createElement('span');tSpan.className='tktype';
+      tSpan.style.background=typeBg[t.type]||'var(--m100)';tSpan.style.color=typeColor[t.type]||'var(--g500)';
+      tSpan.textContent=tm[t.type]||t.type;meta.appendChild(tSpan);}
+    // Badge prioridade
+    const prioSpan=document.createElement('span');prioSpan.className='tkprio p'+((t.prio||'m')[0]);prioSpan.textContent=pm[t.prio||'med'];meta.appendChild(prioSpan);
+    // Prazo
+    if(t.due){const dueSpan=document.createElement('span');dueSpan.className='tkdue'+(isOv?' ov':isTod?' tod':'');dueSpan.textContent=(isOv?'⚠ Atrasado · ':(isTod?'Hoje · ':'')+ffull(t.due));meta.appendChild(dueSpan);}
+    body.appendChild(meta);
+    // Recorrência badge
+    if(t.recur){const rSpan=document.createElement('span');rSpan.style.cssText='font-size:9px;color:var(--b600);background:var(--b100);padding:2px 6px;border-radius:999px;font-weight:600';rSpan.textContent='↻ '+({weekly:'semanal',biweekly:'quinzenal',monthly:'mensal',daily:'diário'}[t.recur.freq]||t.recur.freq);meta.appendChild(rSpan);}
+    // Descrição
+    if(t.desc){const desc=document.createElement('div');desc.style.cssText='font-size:11px;color:var(--g500);margin-top:4px';desc.textContent=t.desc;body.appendChild(desc);}
+    card.appendChild(body);
+    // Botão deletar
+    const del=document.createElement('button');del.className='tkdel';del.textContent='×';del.title='Deletar tarefa';
+    del.addEventListener('click',function(e){e.stopPropagation();delTask(t.id)});
+    card.appendChild(del);
     list.appendChild(card);
   });
 }
@@ -767,15 +806,20 @@ function openTaskModal(id){
   A.editTaskId=id||null;buildSel('tCli');
   document.getElementById('taskMttl').textContent=id?'Editar tarefa':'Nova tarefa';
   document.getElementById('taskDelBtn').style.display=id?'block':'none';
-  if(id){const t=A.tasks.find(x=>x.id===id);if(!t)return;document.getElementById('tTitle').value=t.title;document.getElementById('tDue').value=t.due||'';document.getElementById('tPrio').value=t.prio||'med';document.getElementById('tCli').value=t.client;document.getElementById('tType').value=t.type||'task';document.getElementById('tDesc').value=t.desc||''}
-  else{document.getElementById('tTitle').value='';document.getElementById('tDesc').value='';document.getElementById('tDue').value=fiso(new Date());document.getElementById('tPrio').value='med'}
+  if(id){const t=A.tasks.find(x=>x.id===id);if(!t)return;document.getElementById('tTitle').value=t.title;document.getElementById('tDue').value=t.due||'';document.getElementById('tPrio').value=t.prio||'med';document.getElementById('tCli').value=t.client;document.getElementById('tType').value=t.type||'task';document.getElementById('tDesc').value=t.desc||'';const hasR=!!(t.recur&&t.recur.freq);document.getElementById('tRecur').checked=hasR;document.getElementById('tRecurOpts').classList.toggle('show',hasR);if(hasR){document.getElementById('tFreq').value=t.recur.freq||'weekly';document.getElementById('tUntil').value=t.recur.until||''}else{document.getElementById('tRecur').checked=false;document.getElementById('tRecurOpts').classList.remove('show')}}
+  else{document.getElementById('tTitle').value='';document.getElementById('tDesc').value='';document.getElementById('tDue').value=fiso(new Date());document.getElementById('tPrio').value='med';document.getElementById('tRecur').checked=false;document.getElementById('tRecurOpts').classList.remove('show')}
   document.getElementById('taskModal').classList.add('open');setTimeout(function(){document.getElementById('tTitle').focus()},150);
 }
 function closeTaskModal(){document.getElementById('taskModal').classList.remove('open');A.editTaskId=null}
+function togTaskRecur(){
+  document.getElementById('tRecurOpts').classList.toggle('show',document.getElementById('tRecur').checked);
+  if(document.getElementById('tRecur').checked&&!document.getElementById('tUntil').value){const d=new Date();d.setMonth(d.getMonth()+3);document.getElementById('tUntil').value=fiso(d)}
+}
 function saveTask(){
   const title=document.getElementById('tTitle').value.trim();if(!title){alert('Título obrigatório.');return}
   const due=document.getElementById('tDue').value,cli=document.getElementById('tCli').value;
   const data={title,due,client:cli,prio:document.getElementById('tPrio').value,type:document.getElementById('tType').value,desc:document.getElementById('tDesc').value.trim()};
+  if(document.getElementById('tRecur').checked){data.recur={freq:document.getElementById('tFreq').value,until:document.getElementById('tUntil').value}}else{data.recur=null}
   if(A.editTaskId){
     const idx=A.tasks.findIndex(x=>x.id===A.editTaskId);
     if(idx>-1){A.tasks[idx]=Object.assign({},A.tasks[idx],data);A.events=A.events.filter(x=>x._taskId!==A.editTaskId);if(due)A.events.push({id:'task_'+uid(),title:'⚑ '+title,date:due,time:'08:00',duration:30,client:cli,type:'deadline',notes:'',desc:'',isRoutine:false,_taskId:A.editTaskId})}

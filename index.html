@@ -652,12 +652,15 @@ function rGantt(){
     for(let h=SH;h<EH;h++){const l=document.createElement('div');l.className='wv-hline'+(h%2===0?' maj':' min');l.style.top=((h-SH)*HP)+'px';col.appendChild(l)}
     if(isTod){const nm=new Date().getHours()*60+new Date().getMinutes();if(nm>=SH*60&&nm<=EH*60){const nl=document.createElement('div');nl.className='wv-nowline';nl.style.top=minsToY(nm)+'px';col.appendChild(nl)}}
     if(isBlk){const b=document.createElement('div');b.className='wv-blkl';b.innerHTML='<span>VIER · CRICÍUMA</span>';col.appendChild(b)}
-    // Eventos: rotinas com override suprimidas
-    const overridden=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine));
+    // Eventos: rotinas com override suprimidas — lê A.events (legado) e A.taskV3 (Fase 3.5)
+    const overridden=new Set([
+      ...A.events.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine),
+      ...A.taskV3.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine)
+    ]);
     const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!overridden.has(e.id)&&!v3Ids.has(e.id)):[];
     const dayUsr=A.types.event?userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!e.isRoutine&&!v3Ids.has(e.id)):[];
     // FASE 3: tasks v3 com horário para este dia
-    const dayV3=v3Sched.filter(t=>t.date===ds&&(A.cli[t.clientId]||A.cli[t.client]||true));
+    const dayV3=v3Sched.filter(t=>t.date===ds&&(A.cli[t.clientId]||A.cli[t.client]));
     const allEvs=[...dayRt,...dayUsr,...dayV3].sort((a,b)=>timeToMins(a.time)-timeToMins(b.time));
     // FASE 2: Detecção de conflitos por intervalo (não apenas horário exato de início)
     // Analisa eventos + rotinas + overrides — todo compromisso que ocupa horário
@@ -1550,10 +1553,10 @@ function expRecurV3(tasks,wS,wE){
     while(cur<=wE&&cur<=until){
       const dow=cur.getDay();
       let add=false;
-      if(t.recur.freq==='daily')add=true;
-      else if(t.recur.freq==='weekly'&&targetDay>=0)add=dow===targetDay;
-      else if(t.recur.freq==='biweekly'&&targetDay>=0)add=dow===targetDay; // simplificado
-      else if(t.recur.freq==='monthly')add=true; // simplificado
+      if(t.recur.freq==='daily'||t.recur.freq==='diária')add=true;
+      else if((t.recur.freq==='weekly'||t.recur.freq==='semanal')&&targetDay>=0)add=dow===targetDay;
+      else if((t.recur.freq==='biweekly'||t.recur.freq==='quinzenal')&&targetDay>=0)add=dow===targetDay;
+      else if(t.recur.freq==='monthly'||t.recur.freq==='mensal')add=true;
       if(add){
         const ds=fiso(cur);
         const isDoneInst=!!(t._doneByDate&&t._doneByDate[ds]);
@@ -1608,7 +1611,10 @@ function detectConflicts(date){
   const wS=new Date(A.mon),wE=new Date(A.mon);wE.setDate(wE.getDate()+6);
   const rtEvs=weekR(A.mon);
   const userEvs=expRecur(A.events,wS,wE);
-  const overridden=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===date).map(x=>x._overrideRoutine));
+  const overridden=new Set([
+    ...A.events.filter(x=>x._overrideRoutine&&x.date===date).map(x=>x._overrideRoutine),
+    ...A.taskV3.filter(x=>x._overrideRoutine&&x.date===date).map(x=>x._overrideRoutine)
+  ]);
   const dayRt=rtEvs.filter(e=>e.date===date&&!overridden.has(e.id));
   const dayUsr=userEvs.filter(e=>e.date===date&&!e.isRoutine);
   // FASE 3: incluir taskV3 com horário na data

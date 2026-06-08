@@ -227,6 +227,19 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 .cpicker{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
 .copt{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent}
 .copt.sel{border-color:var(--ink);transform:scale(1.15)}
+.mtabs{display:flex;gap:0;border-bottom:1px solid var(--m200);margin-bottom:16px}
+.mtab{padding:8px 16px;font-size:12px;font-weight:500;color:var(--g500);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.mtab:hover{color:var(--ink)}.mtab.on{color:var(--b600);border-bottom-color:var(--b600);font-weight:600}
+.mtab-pane{display:none}.mtab-pane.on{display:block}
+.proj-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:180px;overflow-y:auto}
+.proj-row{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bone);border:1px solid var(--m200);border-radius:6px}
+.proj-row:hover{background:var(--m100)}
+.proj-name{flex:1;font-size:12px;font-weight:500;color:var(--ink)}
+.proj-fase{font-size:10px;color:var(--g500);font-family:'JetBrains Mono',monospace}
+.proj-del{width:16px;height:16px;border:none;background:transparent;color:var(--g400);cursor:pointer;font-size:12px;flex-shrink:0;border-radius:3px}
+.proj-del:hover{background:var(--d100);color:var(--d600)}
+.proj-add{display:flex;gap:6px;align-items:center}
+.tkproj{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--m100);color:var(--g600);font-family:'JetBrains Mono',monospace;font-weight:500}
 .end-preview{background:var(--bone);border:1px solid var(--m200);border-radius:6px;padding:8px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px}
 .end-preview-lbl{font-family:'Space Grotesk',system-ui;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--g500)}
 .end-preview-val{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:var(--ink)}
@@ -412,9 +425,10 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
       <div class="fg"><label class="fl">Prioridade</label><select class="fsel" id="tPrio"><option value="high">Alta</option><option value="med" selected>Média</option><option value="low">Baixa</option></select></div>
     </div>
     <div class="frow">
-      <div class="fg"><label class="fl">Cliente</label><select class="fsel" id="tCli"></select></div>
+      <div class="fg"><label class="fl">Cliente</label><select class="fsel" id="tCli" onchange="loadProjSel()"></select></div>
       <div class="fg"><label class="fl">Tipo</label><select class="fsel" id="tType"><option value="task">Tarefa</option><option value="call">Ligação</option><option value="charge">Cobrança</option><option value="doc">Documento</option><option value="meeting">Reunião</option></select></div>
     </div>
+    <div class="fg"><label class="fl">Projeto</label><select class="fsel" id="tProj"><option value="">— nenhum —</option></select></div>
     <div class="fg"><label class="fl">Descrição</label><textarea class="fta" id="tDesc" placeholder="Contexto, detalhes..."></textarea></div>
     <div class="recur-sec" id="tRecurSec">
       <label class="recur-toggle"><input type="checkbox" id="tRecur" onchange="togTaskRecur()">Tarefa recorrente</label>
@@ -437,11 +451,24 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 <div class="mbg" id="cliModal">
   <div class="mbox wide">
     <p class="mttl" id="cliMttl">Novo cliente</p>
-    <div class="frow"><div class="fg"><label class="fl">Nome</label><input class="fi" id="cName" type="text"></div><div class="fg"><label class="fl">Tipo</label><select class="fsel" id="cType"><option value="incorporadora">Incorporadora</option><option value="construtora">Construtora</option><option value="escritorio">Escritório</option><option value="engenharia">Engenharia</option><option value="outro">Outro</option></select></div></div>
-    <div class="frow"><div class="fg"><label class="fl">Contato</label><input class="fi" id="cContact" type="text"></div><div class="fg"><label class="fl">Status</label><select class="fsel" id="cStatus"><option value="active">Ativo</option><option value="negotiation">Em negociação</option><option value="inactive">Inativo</option></select></div></div>
-    <div class="fg"><label class="fl">Projetos ativos</label><input class="fi" id="cProjects" type="text"></div>
-    <div class="fg"><label class="fl">Observações</label><input class="fi" id="cNotes" type="text"></div>
-    <div class="fg"><label class="fl">Cor</label><div class="cpicker" id="cpicker"></div></div>
+    <div class="mtabs">
+      <div class="mtab on" onclick="cliTab('info',this)">Dados</div>
+      <div class="mtab" onclick="cliTab('proj',this)">Projetos</div>
+    </div>
+    <div class="mtab-pane on" id="ctp-info">
+      <div class="frow"><div class="fg"><label class="fl">Nome</label><input class="fi" id="cName" type="text"></div><div class="fg"><label class="fl">Tipo</label><select class="fsel" id="cType"><option value="incorporadora">Incorporadora</option><option value="construtora">Construtora</option><option value="escritorio">Escritório</option><option value="engenharia">Engenharia</option><option value="outro">Outro</option></select></div></div>
+      <div class="frow"><div class="fg"><label class="fl">Contato</label><input class="fi" id="cContact" type="text"></div><div class="fg"><label class="fl">Status</label><select class="fsel" id="cStatus"><option value="active">Ativo</option><option value="negotiation">Em negociação</option><option value="inactive">Inativo</option></select></div></div>
+      <div class="fg"><label class="fl">Observações</label><input class="fi" id="cNotes" type="text"></div>
+      <div class="fg"><label class="fl">Cor</label><div class="cpicker" id="cpicker"></div></div>
+    </div>
+    <div class="mtab-pane" id="ctp-proj">
+      <div class="proj-list" id="cProjList"></div>
+      <div class="proj-add">
+        <input class="fi" id="cProjName" type="text" placeholder="Nome do projeto" style="flex:1">
+        <select class="fsel" id="cProjFase" style="width:130px;font-size:11px;padding:6px 8px"><option value="estudo">Estudo prelim.</option><option value="basico">Básico</option><option value="executivo">Executivo</option><option value="obra">Em obra</option><option value="entregue">Entregue</option></select>
+        <button class="hbtn p" onclick="addProj()" style="padding:6px 12px;font-size:11px;white-space:nowrap">+ Projeto</button>
+      </div>
+    </div>
     <div class="mbtns"><button class="mbcancel" onclick="closeCliModal()">Cancelar</button><button class="mbsave" onclick="saveCli()">Salvar</button></div>
   </div>
 </div>
@@ -991,6 +1018,11 @@ function rTasks(){
     if(t.type){var ts=document.createElement('span');ts.className='tktype';ts.style.background=typeBg[t.type]||'var(--m100)';ts.style.color=typeColor[t.type]||'var(--g500)';ts.textContent=tm[t.type]||t.type;meta.appendChild(ts)}
     var ps=document.createElement('span');ps.className='tkprio p'+((t.prio||'m')[0]);ps.textContent=pm[t.prio||'med'];meta.appendChild(ps);
     if(t.due){var ds2=document.createElement('span');ds2.className='tkdue'+(isOv?' ov':isTod?' tod':'');ds2.textContent=(isOv?'⚠ Atrasado · ':isTod?'Hoje · ':'')+ffull(t.due);meta.appendChild(ds2)}
+    if(t.project){
+      var pcli=A.clients.find(function(cl){return cl.id===t.client});
+      var pobj=pcli&&pcli.projs?pcli.projs.find(function(p){return p.id===t.project}):null;
+      if(pobj){var psp=document.createElement('span');psp.className='tkproj';psp.textContent=pobj.name;meta.appendChild(psp)}
+    }
     if(t.recur&&t.recur.freq){var rs=document.createElement('span');rs.style.cssText='font-size:9px;color:var(--b600);background:var(--b100);padding:2px 6px;border-radius:999px;font-weight:600';rs.textContent='↻ '+({weekly:'semanal',biweekly:'quinzenal',monthly:'mensal',daily:'diário'}[t.recur.freq]||t.recur.freq);meta.appendChild(rs)}
     body.appendChild(meta);
     if(t.desc){var desc=document.createElement('div');desc.style.cssText='font-size:11px;color:var(--g500);margin-top:4px';desc.textContent=t.desc;body.appendChild(desc)}
@@ -1015,7 +1047,7 @@ function togTaskRecur(){
   if(document.getElementById('tRecur').checked&&!document.getElementById('tUntil').value){var d=new Date();d.setMonth(d.getMonth()+3);document.getElementById('tUntil').value=fiso(d)}
 }
 function openTaskModal(id){
-  A.editTaskId=id||null;buildSel('tCli');
+  A.editTaskId=id||null;buildSel('tCli');setTimeout(loadProjSel,10);
   document.getElementById('taskMttl').textContent=id?'Editar tarefa':'Nova tarefa';
   document.getElementById('taskDelBtn').style.display=id?'block':'none';
   // Reset completo
@@ -1023,6 +1055,7 @@ function openTaskModal(id){
   document.getElementById('tDue').value=fiso(new Date());document.getElementById('tPrio').value='med';
   document.getElementById('tRecur').checked=false;document.getElementById('tRecurOpts').className='recur-opts';
   document.getElementById('tFreq').value='weekly';document.getElementById('tUntil').value='';
+  document.getElementById('tProj').innerHTML='<option value="">— nenhum —</option>';
   if(id){
     var t=A.tasks.find(function(x){return x.id===id});if(!t)return;
     document.getElementById('tTitle').value=t.title||'';
@@ -1030,7 +1063,13 @@ function openTaskModal(id){
     document.getElementById('tPrio').value=t.prio||'med';
     document.getElementById('tCli').value=t.client||'';
     document.getElementById('tType').value=t.type||'task';
+    loadProjSel();if(t.project)setTimeout(function(){document.getElementById('tProj').value=t.project||''},80);
     document.getElementById('tDesc').value=t.desc||'';
+    if(t.project){
+      var pcli=A.clients.find(function(cl){return cl.id===t.client});
+      var pobj=pcli&&pcli.projs?pcli.projs.find(function(p){return p.id===t.project}):null;
+      if(pobj){var psp=document.createElement('span');psp.className='tkproj';psp.textContent=pobj.name;meta.appendChild(psp)}
+    }
     if(t.recur&&t.recur.freq){
       document.getElementById('tRecur').checked=true;
       document.getElementById('tRecurOpts').className='recur-opts show';
@@ -1047,7 +1086,8 @@ function saveTask(){
   var due=document.getElementById('tDue').value,cli=document.getElementById('tCli').value;
   var isRecur=document.getElementById('tRecur').checked;
   var recur=isRecur?{freq:document.getElementById('tFreq').value,until:document.getElementById('tUntil').value}:null;
-  var data={title:title,due:due,client:cli,prio:document.getElementById('tPrio').value,type:document.getElementById('tType').value,desc:document.getElementById('tDesc').value.trim(),recur:recur};
+  var proj=document.getElementById('tProj')?document.getElementById('tProj').value||'':'';
+  var data={title:title,due:due,client:cli,project:proj,prio:document.getElementById('tPrio').value,type:document.getElementById('tType').value,desc:document.getElementById('tDesc').value.trim(),recur:recur};
   if(A.editTaskId){
     var idx=A.tasks.findIndex(function(x){return x.id===A.editTaskId});
     if(idx>-1){A.tasks[idx]=Object.assign({},A.tasks[idx],data);genTaskEvents(A.editTaskId,title,cli,due,recur)}
@@ -1083,6 +1123,22 @@ function rDash(){
   var bc=document.createElement('div');bc.className='bchart';bc.innerHTML='<h4>Tempo por cliente · semana</h4>';
   A.clients.forEach(function(c){var h=hpc[c.id]||0,pct=Math.round(h/totalH*100);var row=document.createElement('div');row.className='brow';row.innerHTML='<div class="blbl2">'+c.name.split(' ')[0]+'</div><div class="btrack"><div class="bfill" style="width:'+pct+'%;background:'+c.color+'"></div></div><div class="bval">'+Math.round(h)+'h</div>';bc.appendChild(row)});
   w.appendChild(bc);
+  var allProjs=[];
+  A.clients.forEach(function(cli){if(cli.projs)cli.projs.forEach(function(p){allProjs.push({id:p.id,name:p.name,color:cli.color})})});
+  if(allProjs.length){
+    var pt=document.createElement('div');pt.className='bchart';pt.innerHTML='<h4>Tarefas por projeto</h4>';
+    var hasRows=false;
+    allProjs.forEach(function(p){
+      var ptasks=A.tasks.filter(function(t){return t.project===p.id});
+      if(!ptasks.length)return;hasRows=true;
+      var pend=ptasks.filter(function(t){return!t.done}).length;
+      var done=ptasks.filter(function(t){return t.done}).length;
+      var row=document.createElement('div');row.className='brow';
+      row.innerHTML='<div class="blbl2" style="color:'+p.color+'">'+p.name+'</div><div class="btrack"><div class="bfill" style="width:'+(done/ptasks.length*100).toFixed(0)+'%;background:'+p.color+'"></div></div><div class="bval" style="color:'+(pend>0?'var(--d600)':'var(--s600)')+'">'+pend+' pend</div>';
+      pt.appendChild(row);
+    });
+    if(hasRows)w.appendChild(pt);
+  }
   var ai=document.createElement('div');ai.className='ai-card';ai.innerHTML='<h4>Resumo semanal com IA</h4><div id="ai-body" class="ai-body" style="color:var(--g400);font-style:italic">Clique em "Gerar resumo" para análise automática.</div><div style="margin-top:12px"><button class="hbtn p" onclick="genAI()" id="aiBtn">Gerar resumo</button></div>';
   w.appendChild(ai);
 }
@@ -1117,15 +1173,58 @@ function openCliModal(id){
   A.editCliId=id||null;document.getElementById('cliMttl').textContent=id?'Editar cliente':'Novo cliente';
   var cp=document.getElementById('cpicker');cp.innerHTML='';
   COLORS.forEach(function(col){var d=document.createElement('div');d.className='copt';d.style.background=col;d.dataset.color=col;d.onclick=function(){document.querySelectorAll('.copt').forEach(function(x){x.classList.remove('sel')});d.classList.add('sel')};cp.appendChild(d)});
-  if(id){var c=A.clients.find(function(x){return x.id===id});if(c){document.getElementById('cName').value=c.name;document.getElementById('cType').value=c.type;document.getElementById('cContact').value=c.contact;document.getElementById('cStatus').value=c.status;document.getElementById('cProjects').value=c.projects||'';document.getElementById('cNotes').value=c.notes||'';var opt=cp.querySelector('[data-color="'+c.color+'"]');if(opt)opt.classList.add('sel')}}
-  else{['cName','cContact','cProjects','cNotes'].forEach(function(x){document.getElementById(x).value=''});cp.querySelector('.copt').classList.add('sel')}
+  document.querySelectorAll('#cliModal .mtab').forEach(function(t,i){t.classList.toggle('on',i===0)});
+  document.querySelectorAll('#cliModal .mtab-pane').forEach(function(p,i){p.classList.toggle('on',i===0)});
+  if(id){var c=A.clients.find(function(x){return x.id===id});if(c){document.getElementById('cName').value=c.name;document.getElementById('cType').value=c.type;document.getElementById('cContact').value=c.contact;document.getElementById('cStatus').value=c.status;document.getElementById('cNotes').value=c.notes||'';var opt=cp.querySelector('[data-color="'+c.color+'"]');if(opt)opt.classList.add('sel')}}
+  else{['cName','cContact','cNotes'].forEach(function(x){document.getElementById(x).value=''});cp.querySelector('.copt').classList.add('sel')}
   document.getElementById('cliModal').classList.add('open');
 }
 function closeCliModal(){document.getElementById('cliModal').classList.remove('open')}
+function cliTab(name,btn){
+  document.querySelectorAll('#cliModal .mtab').forEach(function(t){t.classList.remove('on')});
+  document.querySelectorAll('#cliModal .mtab-pane').forEach(function(p){p.classList.remove('on')});
+  btn.classList.add('on');
+  document.getElementById('ctp-'+name).classList.add('on');
+  if(name==='proj')renderProjList();
+}
+function renderProjList(){
+  var list=document.getElementById('cProjList');if(!list)return;list.innerHTML='';
+  var cli=A.editCliId?A.clients.find(function(c){return c.id===A.editCliId}):null;
+  var projs=cli&&cli.projs?cli.projs:[];
+  if(!projs.length){list.innerHTML='<div style="font-size:11px;color:var(--g400);padding:8px 0">Nenhum projeto. Salve o cliente e adicione aqui.</div>';return}
+  var fl={estudo:'Estudo',basico:'Básico',executivo:'Executivo',obra:'Obra',entregue:'Entregue'};
+  projs.forEach(function(p,i){
+    var row=document.createElement('div');row.className='proj-row';
+    row.innerHTML='<div class="proj-name">'+p.name+'</div><div class="proj-fase">'+(fl[p.fase]||p.fase)+'</div><button class="proj-del" onclick="delProj('+i+')">×</button>';
+    list.appendChild(row);
+  });
+}
+function addProj(){
+  var name=document.getElementById('cProjName').value.trim();
+  if(!name){alert('Informe o nome do projeto.');return}
+  if(!A.editCliId){alert('Salve o cliente primeiro, depois abra "Editar" para adicionar projetos.');return}
+  var idx=A.clients.findIndex(function(c){return c.id===A.editCliId});
+  if(idx<0)return;
+  if(!A.clients[idx].projs)A.clients[idx].projs=[];
+  A.clients[idx].projs.push({id:uid(),name:name,fase:document.getElementById('cProjFase').value});
+  save();document.getElementById('cProjName').value='';renderProjList();
+}
+function delProj(i){
+  if(!A.editCliId)return;
+  var idx=A.clients.findIndex(function(c){return c.id===A.editCliId});
+  if(idx<0)return;if(!confirm('Remover projeto?'))return;
+  A.clients[idx].projs.splice(i,1);save();renderProjList();
+}
+function loadProjSel(){
+  var cliId=document.getElementById('tCli').value;
+  var sel=document.getElementById('tProj');sel.innerHTML='<option value="">— nenhum —</option>';
+  var cli=A.clients.find(function(c){return c.id===cliId});
+  if(cli&&cli.projs&&cli.projs.length)cli.projs.forEach(function(p){var o=document.createElement('option');o.value=p.id;o.textContent=p.name;sel.appendChild(o)});
+}
 function saveCli(){
   var name=document.getElementById('cName').value.trim();if(!name){alert('Informe o nome.');return}
   var sel=document.querySelector('.copt.sel');var color=sel?sel.dataset.color:COLORS[0];
-  var data={name:name,type:document.getElementById('cType').value,contact:document.getElementById('cContact').value,status:document.getElementById('cStatus').value,projects:document.getElementById('cProjects').value,notes:document.getElementById('cNotes').value,color:color};
+  var data={name:name,type:document.getElementById('cType').value,contact:document.getElementById('cContact').value,status:document.getElementById('cStatus').value,notes:document.getElementById('cNotes').value,color:color};
   if(A.editCliId){var idx=A.clients.findIndex(function(x){return x.id===A.editCliId});if(idx>-1)A.clients[idx]=Object.assign({},A.clients[idx],data)}
   else A.clients.push(Object.assign({id:uid()},data));
   save();closeCliModal();rClients();initFilters();buildSel('eCli');buildSel('tCli');

@@ -802,14 +802,38 @@ function rTasks(){
 }
 function fTask(f,btn){A.taskFilter=f;document.querySelectorAll('.tfbtn').forEach(function(b){b.classList.remove('on')});btn.classList.add('on');rTasks()}
 function doneTask(id){const t=A.tasks.find(x=>x.id===id);if(t){t.done=!t.done;save();rTasks()}}
-function delTask(id){if(!id)return;if(confirm('Deletar?')){A.tasks=A.tasks.filter(x=>x.id!==id);A.events=A.events.filter(x=>x._taskId!==id);save();rTasks()}}
+function delTask(id){if(id===undefined||id===null||id==='')return;if(confirm('Deletar?')){A.tasks=A.tasks.filter(x=>x.id!==id);A.events=A.events.filter(x=>x._taskId!==id);save();rTasks()}}
 function openTaskModal(id){
   A.editTaskId=id||null;buildSel('tCli');
+  // Reset completo do estado do modal a cada abertura
+  document.getElementById('tRecur').checked=false;
+  document.getElementById('tRecurOpts').className='recur-opts';
+  document.getElementById('tTitle').value='';
+  document.getElementById('tDesc').value='';
+  document.getElementById('tDue').value=fiso(new Date());
+  document.getElementById('tPrio').value='med';
+  document.getElementById('tFreq').value='weekly';
+  document.getElementById('tUntil').value='';
   document.getElementById('taskMttl').textContent=id?'Editar tarefa':'Nova tarefa';
   document.getElementById('taskDelBtn').style.display=id?'block':'none';
-  if(id){const t=A.tasks.find(x=>x.id===id);if(!t)return;document.getElementById('tTitle').value=t.title;document.getElementById('tDue').value=t.due||'';document.getElementById('tPrio').value=t.prio||'med';document.getElementById('tCli').value=t.client;document.getElementById('tType').value=t.type||'task';document.getElementById('tDesc').value=t.desc||'';document.getElementById('tRecurSec').style.display='block';const hasR=!!(t.recur&&t.recur.freq);document.getElementById('tRecur').checked=hasR;if(hasR){document.getElementById('tRecurOpts').classList.add('show');document.getElementById('tFreq').value=t.recur.freq||'weekly';document.getElementById('tUntil').value=t.recur.until||''}else{document.getElementById('tRecurOpts').classList.remove('show')}}
-  else{document.getElementById('tTitle').value='';document.getElementById('tDesc').value='';document.getElementById('tDue').value=fiso(new Date());document.getElementById('tPrio').value='med';document.getElementById('tRecurSec').style.display='block';document.getElementById('tRecur').checked=false;document.getElementById('tRecurOpts').classList.remove('show')}
-  document.getElementById('taskModal').classList.add('open');setTimeout(function(){document.getElementById('tTitle').focus()},150);
+  if(id){
+    const t=A.tasks.find(x=>x.id===id);
+    if(!t)return;
+    document.getElementById('tTitle').value=t.title||'';
+    document.getElementById('tDue').value=t.due||'';
+    document.getElementById('tPrio').value=t.prio||'med';
+    document.getElementById('tCli').value=t.client||'';
+    document.getElementById('tType').value=t.type||'task';
+    document.getElementById('tDesc').value=t.desc||'';
+    if(t.recur&&t.recur.freq){
+      document.getElementById('tRecur').checked=true;
+      document.getElementById('tRecurOpts').className='recur-opts show';
+      document.getElementById('tFreq').value=t.recur.freq;
+      document.getElementById('tUntil').value=t.recur.until||'';
+    }
+  }
+  document.getElementById('taskModal').classList.add('open');
+  setTimeout(function(){document.getElementById('tTitle').focus()},150);
 }
 function closeTaskModal(){document.getElementById('taskModal').classList.remove('open');A.editTaskId=null}
 function togTaskRecur(){
@@ -987,6 +1011,10 @@ document.getElementById('tTitle').addEventListener('keydown',function(e){if(e.ke
 function exportJSON(){const blob=new Blob([JSON.stringify({events:A.events,tasks:A.tasks,routines:A.routines,clients:A.clients},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
 
 document.getElementById('hdate').textContent=ffull(new Date());
+// Limpar tarefas corrompidas (sem id válido) que vieram do localStorage
+A.tasks=A.tasks.filter(function(t){return t&&t.id&&typeof t.id==='string'&&t.id.length>0});
+A.events=A.events.filter(function(e){return e&&e.id&&typeof e.id==='string'&&e.id.length>0});
+save();
 initFilters();buildSel('eCli');buildSel('tCli');rGantt();
 </script>
 </body>

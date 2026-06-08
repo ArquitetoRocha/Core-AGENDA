@@ -638,7 +638,8 @@ function rGantt(){
         el.style.cssText=`top:${tp}px;height:${hp2}px;left:calc(${colL}% + 2px);width:calc(${colW}% - 4px);border-left-color:${cli.color}`;
         el.dataset.evid=ge.id;
         el.dataset.date=ds;
-        el.innerHTML=`<div class="etime">${ge.time}${ge.duration?' · '+ge.duration+'m':''}</div><div class="etitle">${ge.title}</div>${ge.desc?`<div class="esub">${ge.desc}</div>`:''}<input type="checkbox" class="echk" ${isDone?'checked':''}>`;
+        const descHtml=ge.desc?'<div class="esub">'+ge.desc+'</div>':'';
+        el.innerHTML='<div class="etime">'+ge.time+(ge.duration?' · '+ge.duration+'m':'')+'</div><div class="etitle">'+ge.title+'</div>'+descHtml+'<input type="checkbox" class="echk" '+(isDone?'checked':'')+'>'; 
         el.querySelector('.echk').addEventListener('change',function(ev2){ev2.stopPropagation();A.done[dk]=ev2.target.checked;save();el.classList.toggle('done-ev',ev2.target.checked)});
         // Tooltip
         el.addEventListener('mouseenter',ev2=>{document.getElementById('ttt').textContent=`${fwdf(d)} · ${ge.time}`;document.getElementById('ttl').textContent=ge.title;document.getElementById('tts').textContent=ge.desc||ge.notes||cli.name;document.getElementById('tt').classList.add('show');posTT(ev2)});

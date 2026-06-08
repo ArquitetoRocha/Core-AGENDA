@@ -446,6 +446,9 @@ const A={
   routines:JSON.parse(localStorage.getItem('coreRot')||'null')||defR(),
   clients:JSON.parse(localStorage.getItem('coreCli')||'null')||defC(),
   done:JSON.parse(localStorage.getItem('coreDone')||'{}'),
+  bin:JSON.parse(localStorage.getItem('coreBin')||'{"events":[],"tasks":[],"clients":[],"routines":[]}'),
+  log:JSON.parse(localStorage.getItem('coreLog')||'{"entries":[]}'),
+  backup:JSON.parse(localStorage.getItem('coreBackup')||'{"snapshots":[]}'),
   cli:{},types:{routine:true,event:true},
   mon:monday(new Date()),tab:'gantt',
   editEvId:null,editTaskId:null,editCliId:null,taskFilter:'all',
@@ -476,7 +479,23 @@ function minsToY(m){return((m-SH*60)/60)*hpx()}
 function yToTime(y){const nm=Math.round((y/hpx()*60+SH*60)/15)*15;const nh=Math.floor(nm/60),nmin=nm%60;return pad(Math.max(SH,Math.min(EH-1,nh)))+':'+pad(nmin)}
 function timeToMins(t){const p=t.split(':');return Number(p[0])*60+Number(p[1])}
 function cliById(id){return A.clients.find(c=>c.id===id)||{name:id,color:'#8A95A4'}}
-function save(){localStorage.setItem('coreEv',JSON.stringify(A.events));localStorage.setItem('coreTasks',JSON.stringify(A.tasks));localStorage.setItem('coreRot',JSON.stringify(A.routines));localStorage.setItem('coreCli',JSON.stringify(A.clients));localStorage.setItem('coreDone',JSON.stringify(A.done))}
+function save(){
+  // FASE 1: Validar integridade ANTES de persistir
+  validateConsistency();
+  try{
+    localStorage.setItem('coreEv',JSON.stringify(A.events));
+    localStorage.setItem('coreTasks',JSON.stringify(A.tasks));
+    localStorage.setItem('coreRot',JSON.stringify(A.routines));
+    localStorage.setItem('coreCli',JSON.stringify(A.clients));
+    localStorage.setItem('coreDone',JSON.stringify(A.done));
+    localStorage.setItem('coreBin',JSON.stringify(A.bin));
+    localStorage.setItem('coreLog',JSON.stringify(A.log));
+    localStorage.setItem('coreBackup',JSON.stringify(A.backup));
+  }catch(e){
+    console.error('❌ Erro ao salvar:',e.message);
+    logChange('save_error','system','storage',e.message);
+  }
+}
 function initFilters(){A.clients.forEach(c=>{if(!(c.id in A.cli))A.cli[c.id]=true});const w=document.getElementById('cliFilters');w.innerHTML='';A.clients.forEach(c=>{const l=document.createElement('label');l.className='cli';l.innerHTML='<input type="checkbox" '+(A.cli[c.id]?'checked':'')+' onchange="togCli(\''+c.id+'\')"><span class="dot" style="background:'+c.color+'"></span>'+c.name;w.appendChild(l)})}
 function buildSel(id){const s=document.getElementById(id);if(!s)return;s.innerHTML='';A.clients.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.name;s.appendChild(o)})}
 
@@ -592,7 +611,7 @@ function rGantt(){
         el.querySelector('.ev-cb').addEventListener('change',function(ev2){ev2.stopPropagation();A.done[dk]=ev2.target.checked;save();el.classList.toggle('done-ev',ev2.target.checked)});
         // Botão delete
         const delBtn=el.querySelector('.ev-del');
-        if(delBtn)delBtn.addEventListener('click',function(ev2){ev2.stopPropagation();if(!confirm('Apagar "'+ge.title+'"?'))return;A.events=A.events.filter(x=>x.id!==ge.id);save();rGantt()});
+        if(delBtn)delBtn.addEventListener('click',function(ev2){ev2.stopPropagation();if(!confirm('Apagar "'+ge.title+'"?'))return;softDelete('event',ge.id,ge);A.events=A.events.filter(x=>x.id!==ge.id);snapshot('delete');save();rGantt()});
         // Ctrl+click = seleção múltipla
         el.addEventListener('click',function(ev2){if(ev2.ctrlKey||ev2.metaKey){ev2.stopPropagation();toggleSel(ge.id,el)}});
         // Tooltip
@@ -739,7 +758,19 @@ function saveEv(){
   if(A.tab==='gantt')rGantt();
   if(A.tab==='year')rYear();
 }
-function delEv(){if(A.editEvId&&confirm('Deletar?')){A.events=A.events.filter(x=>x.id!==A.editEvId);save();closeEvModal();rGantt()}}
+function delEv(){
+  if(A.editEvId&&confirm('Deletar?')){
+    const ev=A.events.find(x=>x.id===A.editEvId);
+    if(ev){
+      softDelete('event',A.editEvId,ev);
+      A.events=A.events.filter(x=>x.id!==A.editEvId);
+      snapshot('delete');
+      save();
+      closeEvModal();
+      rGantt();
+    }
+  }
+}
 
 // TAREFAS
 function rTasks(){
@@ -802,7 +833,19 @@ function rTasks(){
 }
 function fTask(f,btn){A.taskFilter=f;document.querySelectorAll('.tfbtn').forEach(function(b){b.classList.remove('on')});btn.classList.add('on');rTasks()}
 function doneTask(id){const t=A.tasks.find(x=>x.id===id);if(t){t.done=!t.done;save();rTasks()}}
-function delTask(id){if(confirm('Deletar?')){A.tasks=A.tasks.filter(x=>x.id!==id);A.events=A.events.filter(x=>x._taskId!==id);save();rTasks()}}
+function delTask(id){
+  if(confirm('Deletar?')){
+    const task=A.tasks.find(x=>x.id===id);
+    if(task){
+      softDelete('task',id,task);
+      A.tasks=A.tasks.filter(x=>x.id!==id);
+      A.events=A.events.filter(x=>x._taskId!==id);
+      snapshot('delete');
+      save();
+      rTasks();
+    }
+  }
+}
 function openTaskModal(id){
   A.editTaskId=id||null;buildSel('tCli');
   document.getElementById('taskMttl').textContent=id?'Editar tarefa':'Nova tarefa';
@@ -830,7 +873,20 @@ function saveTask(){
   }
   save();closeTaskModal();rTasks();
 }
-function delEditTask(){if(A.editTaskId&&confirm('Deletar?')){A.tasks=A.tasks.filter(x=>x.id!==A.editTaskId);A.events=A.events.filter(x=>x._taskId!==A.editTaskId);save();closeTaskModal();rTasks()}}
+function delEditTask(){
+  if(A.editTaskId&&confirm('Deletar?')){
+    const task=A.tasks.find(x=>x.id===A.editTaskId);
+    if(task){
+      softDelete('task',A.editTaskId,task);
+      A.tasks=A.tasks.filter(x=>x.id!==A.editTaskId);
+      A.events=A.events.filter(x=>x._taskId!==A.editTaskId);
+      snapshot('delete');
+      save();
+      closeTaskModal();
+      rTasks();
+    }
+  }
+}
 
 // DASHBOARD
 function rDash(){
@@ -911,7 +967,7 @@ function saveCli(){
   else A.clients.push(Object.assign({id:uid()},data));
   save();closeCliModal();rClients();initFilters();buildSel('eCli');buildSel('tCli');
 }
-function delCli(id){const c=A.clients.find(x=>x.id===id);if(c&&confirm('Remover "'+c.name+'"?')){A.clients=A.clients.filter(x=>x.id!==id);save();rClients();initFilters();buildSel('eCli');buildSel('tCli')}}
+function delCli(id){const c=A.clients.find(x=>x.id===id);if(c&&confirm('Remover "'+c.name+'"?')){softDelete('client',id,c);A.clients=A.clients.filter(x=>x.id!==id);snapshot('delete');save();rClients();initFilters();buildSel('eCli');buildSel('tCli')}}
 
 // CALENDÁRIO ANUAL
 function rYear(){
@@ -962,8 +1018,112 @@ document.getElementById('tTitle').addEventListener('keydown',function(e){if(e.ke
 
 function exportJSON(){const blob=new Blob([JSON.stringify({events:A.events,tasks:A.tasks,routines:A.routines,clients:A.clients},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='CORE-agenda.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
 
+// ============================================================
+// FASE 1: INTEGRIDADE DOS DADOS
+// ============================================================
+
+// Inicializar lixeira, log, backup
+function initBin(){const stored=localStorage.getItem('coreBin');return stored?JSON.parse(stored):{events:[],tasks:[],clients:[],routines:[]}}
+function initLog(){const stored=localStorage.getItem('coreLog');return stored?JSON.parse(stored):{entries:[]}}
+function initBackup(){const stored=localStorage.getItem('coreBackup');return stored?JSON.parse(stored):{snapshots:[]}}
+
+// Soft delete: mover para lixeira
+function softDelete(type,id,data){
+  if(!A.bin[type])A.bin[type]=[];
+  A.bin[type].push({id:id,data:data,deletedAt:new Date().toISOString(),deletedAtMs:Date.now()});
+  purgeBin();
+  logChange('delete',type,id,'Movido para lixeira');
+}
+
+// Limpar lixeira: 90 dias OU 200 registros
+function purgeBin(){
+  const now=Date.now(),ninetyDaysMs=90*24*60*60*1000,BIN_MAX_RECORDS=200;
+  Object.keys(A.bin).forEach(type=>{
+    A.bin[type]=A.bin[type].filter(entry=>(now-entry.deletedAtMs)<ninetyDaysMs);
+    if(A.bin[type].length>BIN_MAX_RECORDS)A.bin[type]=A.bin[type].slice(A.bin[type].length-BIN_MAX_RECORDS);
+  });
+}
+
+// Restaurar de lixeira
+function restore(type,id){
+  if(!A.bin[type])return;
+  const binEntry=A.bin[type].find(e=>e.id===id);
+  if(!binEntry)return;
+  const restored=binEntry.data;
+  switch(type){
+    case'event':A.events.push(restored);break;
+    case'task':A.tasks.push(restored);break;
+    case'client':A.clients.push(restored);break;
+    case'routine':A.routines.push(restored);break;
+  }
+  A.bin[type]=A.bin[type].filter(e=>e.id!==id);
+  logChange('restore',type,id,'Restaurado da lixeira');
+  snapshot('restore');
+}
+
+// Snapshot: apenas para CREATE, DELETE, RESTORE
+// Armazena objetos estruturados (não strings) para facilitar restauração futura
+function snapshot(action){
+  if(!['create','delete','restore'].includes(action))return;
+  const MAX_SNAPSHOTS=30;
+  const snap={
+    timestamp:new Date().toISOString(),
+    action:action,
+    data:{
+      events:A.events.map(e=>Object.assign({},e)),
+      tasks:A.tasks.map(t=>Object.assign({},t)),
+      clients:A.clients.map(c=>Object.assign({},c)),
+      routines:A.routines.map(r=>Object.assign({},r)),
+      done:Object.assign({},A.done),
+      bin:{
+        events:(A.bin.events||[]).map(e=>Object.assign({},e)),
+        tasks:(A.bin.tasks||[]).map(t=>Object.assign({},t)),
+        clients:(A.bin.clients||[]).map(c=>Object.assign({},c)),
+        routines:(A.bin.routines||[]).map(r=>Object.assign({},r))
+      }
+    }
+  };
+  A.backup.snapshots.push(snap);
+  if(A.backup.snapshots.length>MAX_SNAPSHOTS)A.backup.snapshots.shift();
+}
+
+// Log de alterações
+function logChange(action,entity,id,details){
+  const MAX_LOG_ENTRIES=100;
+  const entry={timestamp:new Date().toISOString(),action:action,entity:entity,id:id,details:details};
+  A.log.entries.push(entry);
+  if(A.log.entries.length>MAX_LOG_ENTRIES)A.log.entries.shift();
+}
+
+// Validar integridade
+function validateConsistency(){
+  const issues=[];
+  // Eventos órfãos
+  A.events.forEach(ev=>{if(ev.client&&!A.clients.find(c=>c.id===ev.client))issues.push('EVENT: '+ev.id+' referencia cliente inexistente ('+ev.client+')')});
+  // Tarefas órfãs
+  A.tasks.forEach(t=>{if(t.client&&!A.clients.find(c=>c.id===t.client))issues.push('TASK: '+t.id+' referencia cliente inexistente ('+t.client+')')});
+  // Eventos referenciando tarefas deletadas
+  A.events.forEach(ev=>{if(ev._taskId&&!A.tasks.find(t=>t.id===ev._taskId))issues.push('EVENT: '+ev.id+' referencia tarefa deletada ('+ev._taskId+')')});
+  // Done registry
+  Object.keys(A.done).forEach(key=>{const id=key.split('_')[0];if(id!=='rt'&&!A.events.find(e=>e.id===id)&&!A.tasks.find(t=>t.id===id))issues.push('DONE: '+key+' referencia entidade deletada')});
+  // IDs duplicados
+  const eventIds=new Set();A.events.forEach(ev=>{if(eventIds.has(ev.id))issues.push('EVENT: ID duplicado ('+ev.id+')');eventIds.add(ev.id)});
+  if(issues.length>0){
+    console.error('❌ INTEGRIDADE COMPROMETIDA:');
+    issues.forEach(issue=>console.error('   '+issue));
+    logChange('integrity_check','system','validation','Encontrados '+issues.length+' problemas');
+    return false;
+  }else{
+    console.log('✅ Integridade validada');
+    return true;
+  }
+}
+
 document.getElementById('hdate').textContent=ffull(new Date());
-initFilters();buildSel('eCli');buildSel('tCli');rGantt();
+initFilters();buildSel('eCli');buildSel('tCli');
+// Validação inicial
+validateConsistency();
+rGantt();
 </script>
 </body>
 </html>

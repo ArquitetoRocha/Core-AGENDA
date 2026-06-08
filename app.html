@@ -520,6 +520,23 @@ function relocateEvent(evId,newTime,visited){
   });
 }
 
+// Substitui qualquer evento/rotina deletada por bloco LIVRE
+function replaceWithFree(date,time,duration,client){
+  A.events.push({
+    id:uid(),
+    title:'Livre · encaixe',
+    date:date,
+    time:time,
+    duration:duration||60,
+    client:client||'core',
+    type:'work',
+    desc:'',
+    notes:'',
+    isRoutine:false,
+    locked:false
+  });
+}
+
 // RENDER SEMANA
 function rGantt(){
   const HP=hpx(),vis=visDays(),z=ZOOM_LEVELS[A.zoomIdx];
@@ -598,16 +615,16 @@ function rGantt(){
         const delBtn=el.querySelector('.ev-del');
         if(delBtn)delBtn.addEventListener('click',function(ev2){
           ev2.stopPropagation();
-          if(!confirm('Apagar "'+ge.title+'"?'))return;
+          if(!confirm('Substituir "'+ge.title+'" por tempo livre?'))return;
+          const freeDate=ds,freeTime=ge.time,freeDur=ge.duration||60,freeCli=ge.client;
           if(ge.isRoutine){
-            // Rotina: criar override marcado como deletado
             const existing=A.events.findIndex(x=>x._overrideRoutine===ge.id&&x.date===ds);
             if(existing>-1){A.events.splice(existing,1);}
-            // Marcar no done como "apagado" para suprimir a rotina neste dia
             A.done['_del_'+ge.id+'_'+ds]=true;
           } else {
             A.events=A.events.filter(x=>x.id!==ge.id);
           }
+          replaceWithFree(freeDate,freeTime,freeDur,freeCli);
           save();rGantt();
         });
         // Ctrl+click = seleção múltipla
@@ -756,7 +773,16 @@ function saveEv(){
   if(A.tab==='gantt')rGantt();
   if(A.tab==='year')rYear();
 }
-function delEv(){if(A.editEvId&&confirm('Deletar?')){A.events=A.events.filter(x=>x.id!==A.editEvId);save();closeEvModal();rGantt()}}
+function delEv(){
+  if(!A.editEvId)return;
+  const ev=A.events.find(x=>x.id===A.editEvId);
+  if(!ev)return;
+  if(!confirm('Substituir "'+ev.title+'" por tempo livre?'))return;
+  const freeDate=ev.date,freeTime=ev.time,freeDur=ev.duration||60,freeCli=ev.client;
+  A.events=A.events.filter(x=>x.id!==A.editEvId);
+  replaceWithFree(freeDate,freeTime,freeDur,freeCli);
+  save();closeEvModal();rGantt();
+}
 
 // TAREFAS
 function rTasks(){
@@ -819,7 +845,15 @@ function rTasks(){
 }
 function fTask(f,btn){A.taskFilter=f;document.querySelectorAll('.tfbtn').forEach(function(b){b.classList.remove('on')});btn.classList.add('on');rTasks()}
 function doneTask(id){const t=A.tasks.find(x=>x.id===id);if(t){t.done=!t.done;save();rTasks()}}
-function delTask(id){if(id===undefined||id===null||id==='')return;if(confirm('Deletar?')){A.tasks=A.tasks.filter(x=>x.id!==id);A.events=A.events.filter(x=>x._taskId!==id);save();rTasks()}}
+function delTask(id){
+  if(id===undefined||id===null||id==='')return;
+  const t=A.tasks.find(x=>x.id===id);
+  if(!t)return;
+  if(!confirm('Excluir tarefa "'+t.title+'"?'))return;
+  A.tasks=A.tasks.filter(x=>x.id!==id);
+  A.events=A.events.filter(x=>x._taskId!==id);
+  save();rTasks();
+}
 function openTaskModal(id){
   A.editTaskId=id||null;buildSel('tCli');
   // Reset completo do estado do modal a cada abertura
@@ -895,7 +929,15 @@ function saveTask(){
   }
   save();closeTaskModal();rTasks();if(A.tab==='gantt')rGantt();if(A.tab==='year')rYear();
 }
-function delEditTask(){if(A.editTaskId&&confirm('Deletar?')){A.tasks=A.tasks.filter(x=>x.id!==A.editTaskId);A.events=A.events.filter(x=>x._taskId!==A.editTaskId);save();closeTaskModal();rTasks()}}
+function delEditTask(){
+  if(!A.editTaskId)return;
+  const t=A.tasks.find(x=>x.id===A.editTaskId);
+  if(!t)return;
+  if(!confirm('Excluir tarefa "'+t.title+'"?'))return;
+  A.tasks=A.tasks.filter(x=>x.id!==A.editTaskId);
+  A.events=A.events.filter(x=>x._taskId!==A.editTaskId);
+  save();closeTaskModal();rTasks();
+}
 
 // DASHBOARD
 function rDash(){

@@ -92,6 +92,8 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 .wv-hline{position:absolute;left:0;right:0;pointer-events:none}
 .wv-hline.maj{border-top:1px solid var(--m200)}
 .wv-hline.min{border-top:1px solid var(--m100)}
+.wv-lunch{position:absolute;left:0;right:0;background:repeating-linear-gradient(-45deg,rgba(0,0,0,0),rgba(0,0,0,0) 4px,rgba(0,0,0,.03) 4px,rgba(0,0,0,.03) 8px);border-top:1px dashed var(--m300);border-bottom:1px dashed var(--m300);pointer-events:none;z-index:3;display:flex;align-items:center;justify-content:center}
+.wv-lunch span{font-family:'Space Grotesk',system-ui;font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--g400);opacity:.6}
 .wv-nowline{position:absolute;left:0;right:0;border-top:2px solid var(--d600);pointer-events:none;z-index:8}
 .wv-nowline::before{content:'';position:absolute;left:-3px;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--d600)}
 .wv-blkl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
@@ -561,6 +563,10 @@ function rGantt(){
     for(let h=SH;h<EH;h++){const l=document.createElement('div');l.className='wv-hline'+(h%2===0?' maj':' min');l.style.top=((h-SH)*HP)+'px';col.appendChild(l)}
     if(isTod){const nm=new Date().getHours()*60+new Date().getMinutes();if(nm>=SH*60&&nm<=EH*60){const nl=document.createElement('div');nl.className='wv-nowline';nl.style.top=minsToY(nm)+'px';col.appendChild(nl)}}
     if(isBlk){const b=document.createElement('div');b.className='wv-blkl';b.innerHTML='<span>VIER · CRICÍUMA</span>';col.appendChild(b)}
+    // Bloco de almoço 12:00–13:00 (não aceita eventos)
+    const lunchTop=minsToY(12*60),lunchH=minsToY(13*60)-lunchTop;
+    const lb=document.createElement('div');lb.className='wv-lunch';lb.style.cssText='top:'+lunchTop+'px;height:'+lunchH+'px;';
+    lb.innerHTML='<span>12:00 – 13:00</span>';col.appendChild(lb);
     // Eventos: rotinas com override suprimidas
     const overridden=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===ds).map(x=>x._overrideRoutine));
     // Rotinas com override deletado são suprimidas completamente
@@ -665,12 +671,15 @@ function rGantt(){
         col.appendChild(el);
       });
     });
-    // Click vazio
+    // Click vazio — abre modal (bloqueia 12:00–13:00)
     col.addEventListener('click',function(ev2){
       if(ev2.target===col||ev2.target.classList.contains('wv-hline')||ev2.target.classList.contains('wv-blkl')){
         const y=ev2.clientY-col.getBoundingClientRect().top;
+        const clickedTime=yToTime(y);
+        const clickedMins=timeToMins(clickedTime);
+        if(clickedMins>=12*60&&clickedMins<13*60)return; // bloqueado: horário de almoço
         document.getElementById('eD').value=ds;
-        document.getElementById('eH').value=yToTime(y);
+        document.getElementById('eH').value=clickedTime;
         openEvModal();
       }
     });
@@ -709,17 +718,16 @@ function attachDrag(el,ev,origTop,totH){
     if(moved){
       moved=false;
       const nt=yToTime(parseFloat(el.style.top));
+      // Bloquear almoço: se arrastado para 12:00–13:00, reposicionar para 13:00
+      const ntMins=timeToMins(nt);
+      const finalTime=(ntMins>=12*60&&ntMins<13*60)?'13:00':nt;
       const idx=A.events.findIndex(x=>x.id===ev.id);
       if(idx>-1){
         const oldTime=A.events[idx].time;
         const oldDate=A.events[idx].date;
-        // FASE 2: Registrar remarcação ANTES de alterar
-        if(oldTime!==nt){
-          logReschedule(ev.id,ev.title,oldDate,oldTime,oldDate,nt,'drag');
-        }
-        // Apenas o evento arrastado é alterado — sem cascata
-        A.events[idx].time=nt;
-        // FASE 2: Detectar conflitos e sinalizar — nunca corrigir
+        if(oldTime!==finalTime)logReschedule(ev.id,ev.title,oldDate,oldTime,oldDate,finalTime,'drag');
+        A.events[idx].time=finalTime;
+        if(finalTime!==nt)el.style.top=minsToY(13*60)+'px';
         detectConflicts(oldDate);
         snapshot('create');
         save();

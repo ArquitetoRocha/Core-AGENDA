@@ -92,15 +92,15 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui;background:v
 .wv-hline{position:absolute;left:0;right:0;pointer-events:none}
 .wv-hline.maj{border-top:1px solid var(--m200)}
 .wv-hline.min{border-top:1px solid var(--m100)}
-.wv-lunch{position:absolute;left:0;right:0;background:repeating-linear-gradient(-45deg,rgba(0,0,0,0),rgba(0,0,0,0) 4px,rgba(0,0,0,.03) 4px,rgba(0,0,0,.03) 8px);border-top:1px dashed var(--m300);border-bottom:1px dashed var(--m300);pointer-events:none;z-index:3;display:flex;align-items:center;justify-content:center}
-.wv-lunch span{font-family:'Space Grotesk',system-ui;font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--g400);opacity:.6}
+.wv-lunch{position:absolute;left:0;right:0;background:rgba(245,246,248,0.96);border-top:2px solid #D7DCE3;border-bottom:2px solid #D7DCE3;pointer-events:none;z-index:15;display:flex;align-items:center;justify-content:center}
+.wv-lunch span{font-family:'Space Grotesk',system-ui;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#B7BFCB}
 .wv-nowline{position:absolute;left:0;right:0;border-top:2px solid var(--d600);pointer-events:none;z-index:8}
 .wv-nowline::before{content:'';position:absolute;left:-3px;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--d600)}
 .wv-blkl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
 .wv-blkl span{font-family:'Space Grotesk',system-ui;font-size:9px;font-weight:700;color:var(--b600);letter-spacing:.1em;text-transform:uppercase;opacity:.25;writing-mode:vertical-rl;transform:rotate(180deg)}
 /* EVENTO */
 .gevt{position:absolute;padding:3px 6px 3px 7px;border-left:3px solid transparent;border-radius:4px;overflow:hidden;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;min-height:20px;transition:box-shadow 120ms,opacity 120ms}
-.gevt:hover{z-index:20;box-shadow:0 3px 12px rgba(14,17,22,.14)}
+.gevt:hover{z-index:12;box-shadow:0 3px 12px rgba(14,17,22,.14)}
 .gevt.dragging{opacity:.72;box-shadow:0 8px 24px rgba(14,17,22,.18);z-index:200;cursor:grabbing;transition:none}
 .gevt.done-ev .etitle{text-decoration:line-through;opacity:.55}
 .gevt.locked-ev{cursor:default}
@@ -596,17 +596,7 @@ function rGantt(){
       const gc=grp.length;
       grp.forEach((ge,gi)=>{
         const sm=timeToMins(ge.time),em=sm+(ge.duration||60);
-        // Clipar evento no bloco de almoço (12:00–13:00)
-        const LUNCH_S=12*60,LUNCH_E=13*60;
-        // Calcular top e height clippados
-        const clippedSm = sm;
-        const clippedEm = (em>LUNCH_S&&sm<LUNCH_S) ? LUNCH_S : em; // termina em 12:00 se cruza
-        const tp=minsToY(clippedSm),hp2=Math.max(minsToY(clippedEm)-tp,22);
-        // Se o evento começa DENTRO do almoço, empurrar para 13:00
-        const displaySm = (sm>=LUNCH_S&&sm<LUNCH_E) ? LUNCH_E : sm;
-        const displayTp = minsToY(displaySm);
-        const displayHp2 = (displaySm!==sm) ? Math.max(minsToY(em>LUNCH_E?em:LUNCH_E)-displayTp,22) : hp2;
-        const finalTp = displayTp, finalHp2 = displayHp2;
+        const finalTp=minsToY(sm),finalHp2=Math.max(minsToY(em)-finalTp,22);
         const cw=Math.floor(100/gc),cl=gi*cw;
         const dk=ge.id+'_'+ds,isDone=!!A.done[dk];
         const cli=cliById(ge.client);
@@ -616,8 +606,7 @@ function rGantt(){
         el.style.cssText='top:'+finalTp+'px;height:'+finalHp2+'px;left:calc('+cl+'% + 2px);width:calc('+cw+'% - 4px);border-left-color:'+cli.color;
         // Conteúdo: sem template literal
         const descEl=ge.desc?'<div class="esub">'+ge.desc+'</div>':'';
-        // Ações: checkbox sempre, delete só em não-rotina
-        // Ações: checkbox sempre, delete sempre (rotinas: suprime neste dia; eventos: remove)
+        // Ações: checkbox + delete (rotinas: suprime este dia; eventos: remove permanentemente)
         const actHtml='<div class="ev-actions"><button class="ev-del" title="Apagar">×</button><input type="checkbox" class="ev-cb" '+(isDone?'checked':'')+'></div>';
         el.innerHTML='<div class="etime">'+ge.time+(ge.duration?' · '+ge.duration+'m':'')+'</div><div class="etitle">'+ge.title+'</div>'+descEl+actHtml;
         // Checkbox done

@@ -587,7 +587,7 @@ function rGantt(){
       }
     }
     // Overlap groups
-    function overlapGroup(ev,list){const s=timeToMins(ev.time),e2=s+(ev.duration||60);return list.filter(o=>{const os=timeToMins(o.time),oe=os+(o.duration||60);return s<oe&&e2>os})}
+    function overlapGroup(ev,list){const s=timeToMins(ev.time),e2=s+(ev.duration||60);return list.filter(o=>{const os=timeToMins(o.time),oe=os+(o.duration||60);return s<oe&&e2>os&&!(s===oe||e2===os)})}
     const placed=new Set();
     allEvs.forEach(e=>{
       if(placed.has(e.id))return;
@@ -596,14 +596,24 @@ function rGantt(){
       const gc=grp.length;
       grp.forEach((ge,gi)=>{
         const sm=timeToMins(ge.time),em=sm+(ge.duration||60);
-        const tp=minsToY(sm),hp2=Math.max(minsToY(em)-tp,22);
+        // Clipar evento no bloco de almoço (12:00–13:00)
+        const LUNCH_S=12*60,LUNCH_E=13*60;
+        // Calcular top e height clippados
+        const clippedSm = sm;
+        const clippedEm = (em>LUNCH_S&&sm<LUNCH_S) ? LUNCH_S : em; // termina em 12:00 se cruza
+        const tp=minsToY(clippedSm),hp2=Math.max(minsToY(clippedEm)-tp,22);
+        // Se o evento começa DENTRO do almoço, empurrar para 13:00
+        const displaySm = (sm>=LUNCH_S&&sm<LUNCH_E) ? LUNCH_E : sm;
+        const displayTp = minsToY(displaySm);
+        const displayHp2 = (displaySm!==sm) ? Math.max(minsToY(em>LUNCH_E?em:LUNCH_E)-displayTp,22) : hp2;
+        const finalTp = displayTp, finalHp2 = displayHp2;
         const cw=Math.floor(100/gc),cl=gi*cw;
         const dk=ge.id+'_'+ds,isDone=!!A.done[dk];
         const cli=cliById(ge.client);
         const isLocked=!!ge.locked,isSel=A.selSet.has(ge.id);
         const el=document.createElement('div');
         el.className='gevt '+ge.client+'-ev'+(ge.isRoutine?' routine-ev':'')+(isDone?' done-ev':'')+(isLocked?' locked-ev':'')+(isSel?' selected-ev':'');
-        el.style.cssText='top:'+tp+'px;height:'+hp2+'px;left:calc('+cl+'% + 2px);width:calc('+cw+'% - 4px);border-left-color:'+cli.color;
+        el.style.cssText='top:'+finalTp+'px;height:'+finalHp2+'px;left:calc('+cl+'% + 2px);width:calc('+cw+'% - 4px);border-left-color:'+cli.color;
         // Conteúdo: sem template literal
         const descEl=ge.desc?'<div class="esub">'+ge.desc+'</div>':'';
         // Ações: checkbox sempre, delete só em não-rotina
@@ -667,7 +677,7 @@ function rGantt(){
           } else {lastTap=now}
         });
         // Drag só em não-locked e não-rotina
-        if(!ge.isRoutine&&!ge.locked)attachDrag(el,ge,tp,totH);
+        if(!ge.isRoutine&&!ge.locked)attachDrag(el,ge,finalTp,totH);
         col.appendChild(el);
       });
     });

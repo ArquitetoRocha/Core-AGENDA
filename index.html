@@ -573,7 +573,11 @@ function rGantt(){
     const deleted=new Set(A.events.filter(x=>x._overrideRoutine&&x.date===ds&&x._deleted).map(x=>x._overrideRoutine));
     const dayRt=A.types.routine?rtEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!overridden.has(e.id)&&!deleted.has(e.id)):[];
     // Overrides normais (não deletados) aparecem no lugar da rotina original
-    const dayOvr=A.types.routine?A.events.filter(e=>e._overrideRoutine&&e.date===ds&&!e._deleted&&A.cli[e.client]):[];
+    // Eventos do usuário: normais + overrides (1 por rotina, o mais recente)
+    const ovrMap={};
+    A.events.filter(e=>e._overrideRoutine&&e.date===ds&&!e._deleted&&A.cli[e.client])
+      .forEach(e=>{const k=e._overrideRoutine;if(!ovrMap[k]||e.createdAt>ovrMap[k].createdAt)ovrMap[k]=e;});
+    const dayOvr=Object.values(ovrMap);
     const dayUsr=A.types.event?userEvs.filter(e=>e.date===ds&&A.cli[e.client]&&!e.isRoutine&&!e._deleted&&!e._overrideRoutine):[];
     const allEvs=[...dayRt,...dayOvr,...dayUsr].sort((a,b)=>timeToMins(a.time)-timeToMins(b.time));
     // FASE 2: Detecção de conflitos por intervalo (não apenas horário exato de início)
@@ -1217,6 +1221,19 @@ function validateConsistency(){
 
 document.getElementById('hdate').textContent=ffull(new Date());
 initFilters();buildSel('eCli');buildSel('tCli');
+// Limpeza automática: remover overrides duplicados (mantém o mais recente por rotina/dia)
+(function cleanDups(){
+  var byKey={};
+  A.events.forEach(function(e){
+    if(!e._overrideRoutine)return;
+    var k=e._overrideRoutine+'_'+(e.date||'');
+    if(!byKey[k]||((e.createdAt||'')>(byKey[k].createdAt||'')))byKey[k]=e;
+  });
+  var keep=new Set(Object.values(byKey).map(function(e){return e.id}));
+  var before=A.events.length;
+  A.events=A.events.filter(function(e){return !e._overrideRoutine||keep.has(e.id);});
+  if(A.events.length<before){save();console.log('[CORE] Limpeza: '+( before-A.events.length)+' overrides duplicados removidos');}
+})();
 // Validação inicial
 validateConsistency();
 rGantt();
